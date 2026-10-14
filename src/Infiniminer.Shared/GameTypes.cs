@@ -88,7 +88,7 @@ namespace Infiniminer
 
     public enum InfiniminerMessage : byte
     {
-        BlockBulkTransfer,      // x-value, y-value, followed by 16*64 bytes of blocktype
+        BlockBulkTransfer,      // x-value, y-value, then 16 rows of blocktypes (16 * map size bytes), deflate-compressed
         BlockSet,               // x, y, z, type
         UseTool,                // position, heading, tool, blocktype
         SelectClass,            // class
@@ -113,6 +113,7 @@ namespace Infiniminer
         SetBeacon,              // vector3 position, string text ("" means remove), byte team
         PlayerSetPosition,      // vector3 position, byte epoch, byte reason (PositionReason): the server moves the player
         MatchInfo,              // int seconds left (-1: no time limit, 0: overtime), uint cash needed to win
+        WorldInfo,              // ushort map size; sent before the map
     }
 
     public enum PositionReason : byte
@@ -131,11 +132,12 @@ namespace Infiniminer
     public static class GameConstants
     {
         // v1.6: new network transport (LiteNetLib). v1.7: server-authoritative movement and respawns.
-        // v1.8: teleporters, drill, home bases.
-        public const string Version = "v1.8";
+        // v1.8: teleporters, drill, home bases. v1.9: variable map size, compressed map transfer.
+        public const string Version = "v1.9";
         public const string AppIdentifier = "InfiniminerPlus";
         public const int DefaultPort = 5565;
-        public const int MapSize = 64;
+        public const int MapSize = 64;          // the default (and original) size of the world cube
+        public static readonly int[] MapSizes = { 64, 96, 128 }; // the cave generator needs multiples of 32; coordinates are sent as bytes
         public const int GroundLevel = 8;
 
         public const string DiscoveryRequest = "INFINIMINER_DISCOVER";

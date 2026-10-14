@@ -45,6 +45,13 @@ namespace Infiniminer
         public List<ServerInformation> discoveredServers = new List<ServerInformation>();
         public Dictionary<uint, Player> playerList = new Dictionary<uint, Player>();
         public bool[,] mapLoadProgress = null;
+        public int mapSize = GameConstants.MapSize;
+
+        // The y coordinate of the surface: above it is "altitude 0", where loot is banked and classes can change.
+        public float SurfaceHeight
+        {
+            get { return mapSize - GameConstants.GroundLevel; }
+        }
 
         // Player variables.
         public Camera playerCamera = null;
@@ -187,7 +194,7 @@ namespace Infiniminer
                 return;
 
             PlaySound(InfiniminerSound.Death);
-            playerPosition = new Vector3(randGen.Next(2, 62), 66, randGen.Next(2, 62));
+            playerPosition = new Vector3(randGen.Next(2, mapSize - 2), mapSize + 2, randGen.Next(2, mapSize - 2));
             playerVelocity = Vector3.Zero;
             playerDead = true;
             respawnPending = false;

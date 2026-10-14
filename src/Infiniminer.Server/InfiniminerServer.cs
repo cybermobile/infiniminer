@@ -14,7 +14,7 @@ namespace Infiniminer
         EventBasedNetListener listener = null;
         BlockType[, ,] blockList = null;    // In game coordinates, where Y points up.
         PlayerTeam[, ,] blockCreatorTeam = null;
-        const int MAPSIZE = GameConstants.MapSize;
+        readonly int MAPSIZE;     // the world is a cube this many blocks on a side
         readonly Dictionary<int, ServerPlayer> playerList = new Dictionary<int, ServerPlayer>();
         int lavaBlockCount = 0;
         readonly ServerConfig config;
@@ -77,7 +77,8 @@ namespace Infiniminer
         {
             this.config = config;
             this.dataDirectory = dataDirectory;
-            movementValidator = new MovementValidator((x, y, z) => blockList[x, y, z]);
+            MAPSIZE = config.MapSize;
+            movementValidator = new MovementValidator((x, y, z) => blockList[x, y, z], MAPSIZE);
         }
 
         public int Port
@@ -396,7 +397,7 @@ namespace Infiniminer
             return newId;
         }
 
-        static bool InBounds(int x, int y, int z)
+        bool InBounds(int x, int y, int z)
         {
             return !(x <= 0 || y <= 0 || z <= 0 || x >= MAPSIZE - 1 || y >= MAPSIZE - 1 || z >= MAPSIZE - 1);
         }
@@ -1110,8 +1111,8 @@ namespace Infiniminer
         {
             for (int i = 0; i < 20; i++)
             {
-                Vector3 startPos = new Vector3(randGen.Next(2, 62), 63, randGen.Next(2, 62));
-                for (startPos.Y = 63; startPos.Y >= 54; startPos.Y--)
+                Vector3 startPos = new Vector3(randGen.Next(2, MAPSIZE - 2), MAPSIZE - 1, randGen.Next(2, MAPSIZE - 2));
+                for (startPos.Y = MAPSIZE - 1; startPos.Y >= MAPSIZE - 10; startPos.Y--)
                 {
                     BlockType blockType = BlockAtPoint(startPos);
                     if (blockType == BlockType.Lava)
@@ -1120,7 +1121,7 @@ namespace Infiniminer
                         return startPos + Vector3.UnitY * 5 + new Vector3(0.5f, 0, 0.5f);
                 }
             }
-            return new Vector3(randGen.Next(2, 62) + 0.5f, 66, randGen.Next(2, 62) + 0.5f);
+            return new Vector3(randGen.Next(2, MAPSIZE - 2) + 0.5f, MAPSIZE + 2, randGen.Next(2, MAPSIZE - 2) + 0.5f);
         }
 
         void CheckHazards(ServerPlayer player)
@@ -1671,17 +1672,22 @@ namespace Infiniminer
 
         public void SendCurrentMap(NetPeer client)
         {
-            Debug.Assert(MAPSIZE == 64, "The BlockBulkTransfer message requires a map size of 64.");
+            // The size comes first, so the client can set up its world.
+            NetDataWriter worldInfo = NetExtensions.CreateMessage(InfiniminerMessage.WorldInfo);
+            worldInfo.Put((ushort)MAPSIZE);
+            client.Send(worldInfo, NetChannel.World);
 
+            byte[] rows = new byte[16 * MAPSIZE];
             for (int x = 0; x < MAPSIZE; x++)
                 for (int y = 0; y < MAPSIZE; y += 16)
                 {
+                    for (int dy = 0; dy < 16; dy++)
+                        for (int z = 0; z < MAPSIZE; z++)
+                            rows[dy * MAPSIZE + z] = (byte)blockList[x, y + dy, z];
                     NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.BlockBulkTransfer);
                     msgBuffer.Put((byte)x);
                     msgBuffer.Put((byte)y);
-                    for (int dy = 0; dy < 16; dy++)
-                        for (int z = 0; z < MAPSIZE; z++)
-                            msgBuffer.Put((byte)(blockList[x, y + dy, z]));
+                    msgBuffer.Put(MapChunk.Compress(rows));
                     client.Send(msgBuffer, NetChannel.World);
                 }
         }

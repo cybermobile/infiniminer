@@ -67,6 +67,30 @@ namespace Infiniminer
         }
     }
 
+    public static class MapChunk
+    {
+        // Map chunks are mostly runs of dirt and air, so they compress very well.
+        public static byte[] Compress(byte[] data)
+        {
+            using MemoryStream output = new MemoryStream();
+            using (System.IO.Compression.DeflateStream deflate = new System.IO.Compression.DeflateStream(output, System.IO.Compression.CompressionLevel.Fastest))
+                deflate.Write(data, 0, data.Length);
+            return output.ToArray();
+        }
+
+        public static byte[] Decompress(byte[] data, int expectedLength)
+        {
+            using System.IO.Compression.DeflateStream inflate = new System.IO.Compression.DeflateStream(new MemoryStream(data), System.IO.Compression.CompressionMode.Decompress);
+            byte[] result = new byte[expectedLength];
+            int read = 0, n;
+            while (read < expectedLength && (n = inflate.Read(result, read, expectedLength - read)) > 0)
+                read += n;
+            if (read != expectedLength)
+                throw new InvalidDataException("truncated map chunk");
+            return result;
+        }
+    }
+
     // Information a server returns in reply to a LAN discovery broadcast.
     public class DiscoveryInfo
     {

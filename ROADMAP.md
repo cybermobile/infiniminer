@@ -39,7 +39,7 @@ The original server trusted almost everything the client said.
 - [x] Match timer (`timelimit`, with overtime on a tie) and win target scaled to player count
       (`winningcashperplayer`), shown on the HUD and scoreboard
 - [x] Team auto-balance (`autobalance`)
-- [ ] Larger worlds (64³ is baked into the protocol)
+- [x] Larger worlds: `mapsize` = 64, 96 or 128; the server sends the size first and map chunks are compressed
 - [ ] Better player collision (currently three sample points)
 
 ## 6. Feel and polish

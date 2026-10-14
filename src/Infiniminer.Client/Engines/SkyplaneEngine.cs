@@ -20,11 +20,16 @@ namespace Infiniminer
         // The shader's weights (1/2, 1/4, 1/8, 1/16) were followed by a 1-(1-x)^2 curve, which is
         // close to doubling for the sparse noise used here.
         static readonly float[] OctaveWeight = { 1f, 0.5f, 0.25f, 0.125f };
-        static readonly Vector3[] Corners =
+        // A plane above the world (originally y = 100 over a 64 cube), sized to cover it.
+        static Vector3[] Corners(int mapSize)
         {
-            new Vector3(-210, 100, -210), new Vector3(274, 100, -210), new Vector3(274, 100, 274),
-            new Vector3(-210, 100, -210), new Vector3(274, 100, 274), new Vector3(-210, 100, 274),
-        };
+            float low = mapSize / 2 - 242 - (mapSize - 64), high = mapSize / 2 + 242 + (mapSize - 64), y = mapSize + 36;
+            return new[]
+            {
+                new Vector3(low, y, low), new Vector3(high, y, low), new Vector3(high, y, high),
+                new Vector3(low, y, low), new Vector3(high, y, high), new Vector3(low, y, high),
+            };
+        }
         static readonly Vector2[] CornerUVs =
         {
             new Vector2(0, 0), new Vector2(1, 0), new Vector2(1, 1),
@@ -75,6 +80,7 @@ namespace Infiniminer
             graphicsDevice.DepthStencilState = DepthStencilState.None;
             graphicsDevice.BlendState = BlendState.Additive;
 
+            Vector3[] corners = Corners(_P.mapSize);
             Vector2 direction = new Vector2(0.5f, 1.0f);
             float t = effectTime / 8000;
             for (int octave = 0; octave < OctaveScale.Length; octave++)
@@ -82,7 +88,7 @@ namespace Infiniminer
                 for (int i = 0; i < 6; i++)
                 {
                     Vector2 uv = OctaveScale[octave] * (CornerUVs[i] / 20 + OctaveSpeed[octave] * t * direction);
-                    vertices[i] = new VertexPositionTexture(Corners[i], uv);
+                    vertices[i] = new VertexPositionTexture(corners[i], uv);
                 }
                 effect.DiffuseColor = new Vector3(OctaveWeight[octave]);
                 effect.CurrentTechnique.Passes[0].Apply();

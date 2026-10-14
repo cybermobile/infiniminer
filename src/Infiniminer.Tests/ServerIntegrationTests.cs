@@ -51,8 +51,14 @@ namespace Infiniminer.Tests
             public NetPeer Peer;
             public readonly List<byte[]> Messages = new List<byte[]>();
             public DisconnectInfo? Disconnect;
-            public readonly BlockType[,,] Map = new BlockType[64, 64, 64];
+            public BlockType[,,] Map = new BlockType[64, 64, 64];
+            public int MapSize = 64;
             public int ChunksReceived;
+
+            public bool MapComplete
+            {
+                get { return ChunksReceived == MapSize * MapSize / 16; }
+            }
             public uint MyId;
             public DiscoveryInfo Discovery;
             public Vector3 Position;
@@ -81,12 +87,18 @@ namespace Infiniminer.Tests
                 Messages.Add(data);
                 NetDataReader reader = new NetDataReader(data);
                 InfiniminerMessage type = (InfiniminerMessage)reader.GetByte();
-                if (type == InfiniminerMessage.BlockBulkTransfer)
+                if (type == InfiniminerMessage.WorldInfo)
+                {
+                    MapSize = reader.GetUShort();
+                    Map = new BlockType[MapSize, MapSize, MapSize];
+                }
+                else if (type == InfiniminerMessage.BlockBulkTransfer)
                 {
                     byte x = reader.GetByte(), y = reader.GetByte();
+                    byte[] rows = MapChunk.Decompress(reader.GetRemainingBytes(), 16 * MapSize);
                     for (int dy = 0; dy < 16; dy++)
-                        for (int z = 0; z < 64; z++)
-                            Map[x, y + dy, z] = (BlockType)reader.GetByte();
+                        for (int z = 0; z < MapSize; z++)
+                            Map[x, y + dy, z] = (BlockType)rows[dy * MapSize + z];
                     ChunksReceived++;
                 }
                 else if (type == InfiniminerMessage.PlayerSetPosition)
@@ -169,7 +181,7 @@ namespace Infiniminer.Tests
         {
             Bot bot = new Bot();
             bot.Connect(server.Port);
-            WaitFor(bot, () => bot.ChunksReceived == 256 && bot.MyId != 0, "map download and join");
+            WaitFor(bot, () => bot.MapComplete && bot.MyId != 0, "map download and join");
 
             NetDataWriter setTeam = NetExtensions.CreateMessage(InfiniminerMessage.PlayerSetTeam);
             setTeam.Put((byte)team);

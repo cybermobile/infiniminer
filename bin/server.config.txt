@@ -40,3 +40,7 @@ winningcashperplayer = 0
 
 # If this flag is true, players cannot join a team that already has more players than the other.
 autobalance = false
+
+# The size of the world cube: 64 (the original), 96 or 128. Bigger worlds have proportionally more ore,
+# gold and diamonds.
+mapsize = 64

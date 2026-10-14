@@ -72,6 +72,7 @@ executable. Other new settings:
   timelimit   (server) match length in minutes; the richer team wins, ties go to overtime (default 0, off).
   winningcashperplayer  (server) extra cash needed to win per connected player (default 0).
   autobalance (server) players can't join a team that already has more players (default false).
+  mapsize     (server) size of the world cube: 64 (original), 96 or 128 (default 64).
 
 Fonts: the original used the 04b08 and 04b03b bitmap fonts by Yuji Oshimoto, which are not
 redistributed here (http://www.dsg4.com/04/extra/bitmap/). The game ships with the look-alike
@@ -110,7 +111,7 @@ physics, classes, tools and menus are unchanged. Some fixes were made along the 
   - Connection errors (version mismatch, banned, server full, disconnects) are shown in the server
     browser instead of a Windows message box.
 
-The network protocol is not compatible with v1.5, so the version is now v1.8.
+The network protocol is not compatible with v1.5, so the version is now v1.9.
 
 
 DEVELOPMENT

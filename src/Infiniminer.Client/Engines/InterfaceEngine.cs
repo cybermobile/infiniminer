@@ -299,7 +299,7 @@ namespace Infiniminer
                 RenderMessageCenter(spriteBatch, String.Format("FPS: {0:000}", gameInstance.FrameRate), new Vector2(60, ScreenHeight - 20), Color.Gray, Color.Black);
 
             // Show the altimeter.
-            int altitude = (int)(_P.playerPosition.Y - 64 + InfiniminerGame.GROUND_LEVEL);
+            int altitude = (int)(_P.playerPosition.Y - _P.SurfaceHeight);
             RenderMessageCenter(spriteBatch, String.Format("ALTITUDE: {0:00}", altitude), new Vector2(ScreenWidth - 90, ScreenHeight - 20), altitude >= 0 ? Color.Gray : InfiniminerGame.IM_RED, Color.Black);
 
             // Draw bank instructions.
@@ -307,7 +307,7 @@ namespace Infiniminer
                 RenderMessageCenter(spriteBatch, ClientSettings.KeyName(gameInstance.Settings.Key(GameAction.DepositOre)) + ": DEPOSIT 50 ORE  " + ClientSettings.KeyName(gameInstance.Settings.Key(GameAction.WithdrawOre)) + ": WITHDRAW 50 ORE", new Vector2(ScreenWidth / 2, ScreenHeight / 2 + 60), Color.White, Color.Black);
 
             // Are they trying to change class when they cannot?
-            if (Keyboard.GetState().IsKeyDown(gameInstance.Settings.Key(GameAction.ChangeClass)) && _P.playerPosition.Y <= 64 - InfiniminerGame.GROUND_LEVEL && _P.chatMode == ChatMessageType.None)
+            if (Keyboard.GetState().IsKeyDown(gameInstance.Settings.Key(GameAction.ChangeClass)) && _P.playerPosition.Y <= _P.SurfaceHeight && _P.chatMode == ChatMessageType.None)
                 RenderMessageCenter(spriteBatch, "YOU CANNOT CHANGE YOUR CLASS BELOW THE SURFACE", new Vector2(ScreenWidth / 2, ScreenHeight / 2 + 90), Color.White, Color.Black);
 
             // Draw the text-based information panel.

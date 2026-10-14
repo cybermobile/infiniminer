@@ -52,7 +52,7 @@ namespace Infiniminer.Tests
             {
                 Bot bot = new Bot();
                 bot.Connect(Server.Port, handle: handle);
-                WaitFor(bot, () => bot.ChunksReceived == 256 && bot.MyId != 0, "join");
+                WaitFor(bot, () => bot.MapComplete && bot.MyId != 0, "join");
                 NetDataWriter setTeam = NetExtensions.CreateMessage(InfiniminerMessage.PlayerSetTeam);
                 setTeam.Put((byte)team);
                 bot.Send(setTeam, NetChannel.ReliableInOrder2);
@@ -83,6 +83,26 @@ namespace Infiniminer.Tests
         {
             NetDataReader reader = bot.MessagesOfType(InfiniminerMessage.MatchInfo).LastOrDefault();
             return reader == null ? null : (reader.GetInt(), reader.GetUInt());
+        }
+
+        [Fact]
+        public void LargerWorldsCanBePlayed()
+        {
+            using TestServer server = new TestServer(new ServerConfig { MapSize = 128, HomeBases = true });
+            using Bot bot = server.Join("Bot", PlayerTeam.Red, PlayerClass.Miner);
+            Assert.Equal(128, bot.MapSize);
+            Assert.Equal(1024, bot.ChunksReceived);
+
+            Dictionary<BlockType, int> counts = new Dictionary<BlockType, int>();
+            foreach (BlockType block in bot.Map)
+                counts[block] = counts.GetValueOrDefault(block) + 1;
+            Assert.True(counts.GetValueOrDefault(BlockType.Gold) > 100, "plenty of gold");
+            Assert.True(counts.GetValueOrDefault(BlockType.Diamond) > 50, "plenty of diamonds");
+
+            // Red's base is in the far corner of the bigger map, and players spawn there.
+            Assert.Equal(BlockType.HomeRed, bot.Map[122, 119, 122]);
+            Assert.InRange(bot.Position.X, 119, 125);
+            Assert.InRange(bot.Position.Z, 119, 125);
         }
 
         [Fact]

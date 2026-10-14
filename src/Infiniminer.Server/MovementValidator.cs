@@ -76,10 +76,12 @@ namespace Infiniminer
         const float SweepStep = 0.25f;
 
         readonly Func<int, int, int, BlockType> getBlock;
+        readonly int mapSize;
 
-        public MovementValidator(Func<int, int, int, BlockType> getBlock)
+        public MovementValidator(Func<int, int, int, BlockType> getBlock, int mapSize = GameConstants.MapSize)
         {
             this.getBlock = getBlock;
+            this.mapSize = mapSize;
         }
 
         // The outermost layer of the map is never loaded by the client (players can pass through it),
@@ -87,7 +89,7 @@ namespace Infiniminer
         BlockType BlockAt(Vector3 point)
         {
             int x = GameConstants.ToBlock(point.X), y = GameConstants.ToBlock(point.Y), z = GameConstants.ToBlock(point.Z);
-            if (x <= 0 || y <= 0 || z <= 0 || x >= GameConstants.MapSize - 1 || y >= GameConstants.MapSize - 1 || z >= GameConstants.MapSize - 1)
+            if (x <= 0 || y <= 0 || z <= 0 || x >= mapSize - 1 || y >= mapSize - 1 || z >= mapSize - 1)
                 return BlockType.None;
             return getBlock(x, y, z);
         }

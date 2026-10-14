@@ -49,7 +49,7 @@ namespace Infiniminer
         // direction has its own shade, and the shaded LOD (fog) colour has to match it.
         VertexBuffer[,,] vertexBuffers = null;
         bool[,] vertexListDirty = null;
-        readonly bool[] regionVisible = new bool[NUMREGIONS];
+        readonly bool[] regionVisible;
 
         // The original lava shader scrolled the texture over time; here the texture itself is scrolled.
         Texture2D lavaScrollTexture;
@@ -72,10 +72,10 @@ namespace Infiniminer
             vertexListDirty[texture, region] = true;
         }
 
-        public const int MAPSIZE = GameConstants.MapSize;
+        public readonly int MAPSIZE;     // the world is a cube this many blocks on a side (sent by the server)
         const int REGIONSIZE = 16;
-        const int REGIONRATIO = MAPSIZE / REGIONSIZE;
-        const int NUMREGIONS = REGIONRATIO * REGIONRATIO * REGIONRATIO;
+        readonly int REGIONRATIO;
+        readonly int NUMREGIONS;
 
         public void DownloadComplete()
         {
@@ -86,9 +86,13 @@ namespace Infiniminer
                             AddBlock(i, j, k, downloadList[i, j, k]);
         }
 
-        public BlockEngine(InfiniminerGame gameInstance)
+        public BlockEngine(InfiniminerGame gameInstance, int mapSize = GameConstants.MapSize)
         {
             this.gameInstance = gameInstance;
+            MAPSIZE = mapSize;
+            REGIONRATIO = MAPSIZE / REGIONSIZE;
+            NUMREGIONS = REGIONRATIO * REGIONRATIO * REGIONRATIO;
+            regionVisible = new bool[NUMREGIONS];
 
             // Initialize the block list.
             downloadList = new BlockType[MAPSIZE, MAPSIZE, MAPSIZE];
@@ -480,17 +484,19 @@ namespace Infiniminer
 
         private uint EncodeBlockFace(ushort x, ushort y, ushort z, BlockFaceDirection faceDir)
         {
-            return (uint)(x + y * MAPSIZE + z * MAPSIZE * MAPSIZE + (byte)faceDir * MAPSIZE * MAPSIZE * MAPSIZE);
+            uint size = (uint)MAPSIZE;
+            return x + y * size + z * size * size + (byte)faceDir * size * size * size;
         }
 
         private void DecodeBlockFace(uint faceCode, ref ushort x, ref ushort y, ref ushort z, ref BlockFaceDirection faceDir)
         {
-            x = (ushort)(faceCode % MAPSIZE);
-            faceCode = (faceCode - x) / MAPSIZE;
-            y = (ushort)(faceCode % MAPSIZE);
-            faceCode = (faceCode - y) / MAPSIZE;
-            z = (ushort)(faceCode % MAPSIZE);
-            faceCode = (faceCode - z) / MAPSIZE;
+            uint size = (uint)MAPSIZE;
+            x = (ushort)(faceCode % size);
+            faceCode = (faceCode - x) / size;
+            y = (ushort)(faceCode % size);
+            faceCode = (faceCode - y) / size;
+            z = (ushort)(faceCode % size);
+            faceCode = (faceCode - z) / size;
             faceDir = (BlockFaceDirection)faceCode;
         }
 
@@ -502,11 +508,12 @@ namespace Infiniminer
 
         private Vector3 GetRegionCenter(uint regionNumber)
         {
+            uint ratio = (uint)REGIONRATIO;
             uint x, y, z;
-            x = regionNumber % REGIONRATIO;
-            regionNumber = (regionNumber - x) / REGIONRATIO;
-            y = regionNumber % REGIONRATIO;
-            regionNumber = (regionNumber - y) / REGIONRATIO;
+            x = regionNumber % ratio;
+            regionNumber = (regionNumber - x) / ratio;
+            y = regionNumber % ratio;
+            regionNumber = (regionNumber - y) / ratio;
             z = regionNumber;
             return new Vector3(x * REGIONSIZE + REGIONSIZE / 2, y * REGIONSIZE + REGIONSIZE / 2, z * REGIONSIZE + REGIONSIZE / 2);
         }

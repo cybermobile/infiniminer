@@ -309,22 +309,39 @@ namespace Infiniminer
             InfiniminerMessage dataType = (InfiniminerMessage)msgBuffer.GetByte();
             switch (dataType)
             {
+                case InfiniminerMessage.WorldInfo:
+                    {
+                        int size = msgBuffer.GetUShort();
+                        if (!GameConstants.MapSizes.Contains(size))
+                            throw new InvalidDataException("unsupported map size " + size);
+                        if (size != propertyBag.blockEngine.MAPSIZE)
+                        {
+                            propertyBag.blockEngine.Dispose();
+                            propertyBag.blockEngine = new BlockEngine(this, size);
+                        }
+                        propertyBag.mapSize = size;
+                        propertyBag.mapLoadProgress = new bool[size, size];
+                    }
+                    break;
+
                 case InfiniminerMessage.BlockBulkTransfer:
                     {
+                        int size = propertyBag.mapSize;
                         byte x = msgBuffer.GetByte();
                         byte y = msgBuffer.GetByte();
+                        byte[] rows = MapChunk.Decompress(msgBuffer.GetRemainingBytes(), 16 * size);
                         propertyBag.mapLoadProgress[x, y] = true;
-                        for (byte dy = 0; dy < 16; dy++)
-                            for (byte z = 0; z < 64; z++)
+                        for (int dy = 0; dy < 16; dy++)
+                            for (int z = 0; z < size; z++)
                             {
-                                BlockType blockType = (BlockType)msgBuffer.GetByte();
-                                if (blockType != BlockType.None)
+                                BlockType blockType = (BlockType)rows[dy * size + z];
+                                if (blockType != BlockType.None && blockType < BlockType.MAXIMUM)
                                     propertyBag.blockEngine.downloadList[x, y + dy, z] = blockType;
                             }
                         bool downloadComplete = true;
-                        for (x = 0; x < 64; x++)
-                            for (y = 0; y < 64; y += 16)
-                                if (propertyBag.mapLoadProgress[x, y] == false)
+                        for (int cx = 0; cx < size && downloadComplete; cx++)
+                            for (int cy = 0; cy < size; cy += 16)
+                                if (propertyBag.mapLoadProgress[cx, cy] == false)
                                 {
                                     downloadComplete = false;
                                     break;

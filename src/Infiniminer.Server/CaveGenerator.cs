@@ -14,6 +14,12 @@ namespace Infiniminer
             randGen = new Random(seed);
         }
 
+        // Worlds bigger than the original 64 get proportionally more ore, gold and diamonds.
+        static int VolumeRatio(int size)
+        {
+            return Math.Max(1, (int)Math.Round(Math.Pow(size / 64.0, 3)));
+        }
+
         // Create a cave system.
         public static BlockType[, ,] GenerateCaveSystem(int size, bool includeLava, uint oreFactor)
         {
@@ -23,7 +29,7 @@ namespace Infiniminer
             // Add ore.
             float[, ,] oreNoise = CaveGenerator.GeneratePerlinNoise(32);
             oreNoise = InterpolateData(ref oreNoise, 32, size);
-            for (int i = 0; i < oreFactor; i++)
+            for (int i = 0; i < oreFactor * VolumeRatio(size); i++)
                 CaveGenerator.PaintWithRandomWalk(ref caveData, ref oreNoise, size, 1, BlockType.Ore, false);
 
             // Add minerals.
@@ -163,7 +169,7 @@ namespace Infiniminer
         {
             CaveInfo += "diamond";
 
-            int numDiamonds = 16;
+            int numDiamonds = 16 * VolumeRatio(size);
             for (int i = 0; i < numDiamonds; i++)
             {
                 int x = randGen.Next(0, size);
@@ -186,7 +192,7 @@ namespace Infiniminer
         {
             CaveInfo += "gold";
 
-            int numVeins = 16;
+            int numVeins = 16 * VolumeRatio(size);
             for (int i = 0; i < numVeins; i++)
             {
                 int fieldLength = randGen.Next(size/3, size);
