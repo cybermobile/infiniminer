@@ -66,6 +66,9 @@ namespace Infiniminer
         // Chat stuff.
         public ChatMessageType chatMode = ChatMessageType.None;
         public readonly ChatLog chatLog = new ChatLog();
+
+        // Tips for new players (finished tips are kept in the settings).
+        public readonly Guide guide;
         public string chatEntryBuffer = "";
 
         public PropertyBag(InfiniminerGame gameInstance)
@@ -99,6 +102,8 @@ namespace Infiniminer
             playerCamera = new Camera(gameInstance.GraphicsDevice);
             playerCamera.FieldOfView = gameInstance.Settings.FieldOfView;
             UpdateCamera();
+
+            guide = new Guide(gameInstance.Settings.TipsDone);
 
             // Load sounds.
             if (!gameInstance.NoSound && !sounds.Load(gameInstance.Assets))
@@ -455,6 +460,24 @@ namespace Infiniminer
             if (blockType == BlockType.BankBlue && player.Team == PlayerTeam.Blue)
                 return true;
             return false;
+        }
+
+        // What the guide needs to know; tips are only for real games (not watching, the map editor or a finished match).
+        public GuideState GuideState(bool showTips)
+        {
+            bool playing = showTips && !player.Dead && !player.Spectating && player.HasClass && !player.Sandbox
+                && teamWinners == PlayerTeam.None;
+            return new GuideState(playing, SurfaceHeight - player.Position.Y, player.Ore, player.Cash, player.Class,
+                player.SelectedTool, player.SelectedBlock, winningCash);
+        }
+
+        // The block the crosshair is on, within building reach, or None.
+        public BlockType LookingAt()
+        {
+            Vector3 hitPoint = Vector3.Zero, buildPoint = Vector3.Zero;
+            if (!blockEngine.RayCollision(player.Position, playerCamera.GetLookVector(), 6, 25, ref hitPoint, ref buildPoint))
+                return BlockType.None;
+            return blockEngine.BlockAtPoint(hitPoint);
         }
 
         public float GetToolCooldown(PlayerTools tool)

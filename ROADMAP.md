@@ -113,3 +113,11 @@ The original server trusted almost everything the client said.
       the team holding it $25 a second; bots go and hold it, and find their way round if they get stuck
 - [x] Map editor: sandbox games build with the world's own blocks and take away anything; SAVE MAP in the menu,
       MAP in HOST GAME, `map =` / `savemap` / `loadmap` for dedicated servers
+
+## 13. Learning the game
+- [x] Tips for new players: one at a time, each finished by doing it (dig in, find ore, build a ladder to climb out,
+      find treasure, take it up to bank it, the class's own tool, how to win); remembered in `tips_done`, and
+      TIPS FOR NEW PLAYERS in OPTIONS turns them off, or back on from the start
+- [x] With tips on, the block under the crosshair is named and explained (ROCK: too hard for a pickaxe...)
+- [x] The tool in hand is named at the bottom of the screen, with the construction gun's block, its price and
+      whether you can afford it; with tips on, what it does shows for a few seconds after changing

@@ -44,6 +44,8 @@ namespace Infiniminer
         public int ControllerSensitivity = 10;  // 1-20: right stick look speed
         public bool Vibration = true;
         public bool DeckSetupDone = false;  // Steam Deck defaults applied once (1280x800)
+        public bool ShowTips = true;        // tips for new players, and names of the blocks you look at
+        public HashSet<string> TipsDone = new HashSet<string>();   // the guide's finished tips
         public string ServerListUrl = "";
 
         // Servers joined recently, newest first: the address as typed or listed ("host:port") and a name.
@@ -196,6 +198,10 @@ namespace Infiniminer
             settings.ControllerSensitivity = Math.Clamp(dataFile.GetInt("controllersensitivity", settings.ControllerSensitivity), MinSensitivity, MaxSensitivity);
             settings.Vibration = dataFile.GetBool("vibration", settings.Vibration);
             settings.DeckSetupDone = dataFile.GetBool("deck_setup", settings.DeckSetupDone);
+            settings.ShowTips = dataFile.GetBool("tips", settings.ShowTips);
+            foreach (string step in dataFile.GetString("tips_done", "").Split(','))
+                if (step.Trim() != "")
+                    settings.TipsDone.Add(step.Trim().ToLowerInvariant());
             settings.ServerListUrl = dataFile.GetString("serverlist", settings.ServerListUrl);
             for (int i = MaxRecentServers; i >= 1; i--)
             {
@@ -258,6 +264,10 @@ namespace Infiniminer
             Line("controllersensitivity = " + ControllerSensitivity.ToString(CultureInfo.InvariantCulture));
             Line("vibration = " + Bool(Vibration));
             Line("deck_setup = " + Bool(DeckSetupDone));
+            Line();
+            Line("# Tips for new players, and the ones already done.");
+            Line("tips = " + Bool(ShowTips));
+            Line("tips_done = " + string.Join(",", TipsDone.OrderBy(t => t, StringComparer.Ordinal)));
             Line();
             Line("# This value specifies the override volume multiplier, for people who find the sounds too loud.");
             Line("volume = " + Volume.ToString("0.0#", CultureInfo.InvariantCulture));

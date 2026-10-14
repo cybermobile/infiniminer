@@ -246,6 +246,105 @@ namespace Infiniminer
             spriteBatch.Draw(blockIcons[blockType], new Rectangle(drawX+37*3, drawY+50*3, 117, 63), Color.White);
         }
 
+        // Splits text into lines no wider than `width`.
+        List<string> Wrap(string text, float width)
+        {
+            List<string> lines = new List<string>();
+            string line = "";
+            foreach (string word in text.Split(' '))
+            {
+                string longer = line == "" ? word : line + " " + word;
+                if (line != "" && uiFont.MeasureString(longer).X > width)
+                {
+                    lines.Add(line);
+                    line = word;
+                }
+                else
+                    line = longer;
+            }
+            if (line != "")
+                lines.Add(line);
+            return lines;
+        }
+
+        GuideControls TipControls()
+        {
+            if (gameInstance.UsingGamePad)
+                return new GuideControls("RT", "RB", "LB", "BACK");
+            ClientSettings settings = gameInstance.Settings;
+            return new GuideControls("LEFT CLICK", ClientSettings.KeyName(settings.Key(GameAction.NextTool)),
+                ClientSettings.KeyName(settings.Key(GameAction.NextBlock)), ClientSettings.KeyName(settings.Key(GameAction.Scoreboard)));
+        }
+
+        PlayerTools lastTool;
+        BlockType lastBlock;
+        double equipmentChangedAt = double.NegativeInfinity;
+
+        // What's in hand, at the bottom of the screen: the tool, and the construction gun's block and its price. With
+        // tips on, what it does is shown for a few seconds after changing.
+        void RenderEquipment(SpriteBatch spriteBatch)
+        {
+            LocalPlayer player = _P.player;
+            PlayerTools tool = player.SelectedTool;
+            BlockType block = tool == PlayerTools.ConstructionGun ? player.SelectedBlock : BlockType.None;
+            if (tool != lastTool || block != lastBlock)
+            {
+                lastTool = tool;
+                lastBlock = block;
+                equipmentChangedAt = currentTime;
+            }
+
+            string label = BlockGuide.ToolName(tool);
+            Color color = Color.White;
+            string explanation = BlockGuide.ToolDescription(tool, player.Sandbox);
+            if (tool == PlayerTools.ConstructionGun)
+            {
+                uint cost = player.BuildCost(block);
+                label += ": " + BlockGuide.Name(block) + (cost == 0 ? " (FREE)" : " (" + cost + " ORE)");
+                if (player.Ore < cost)
+                {
+                    label += " - NOT ENOUGH ORE";
+                    color = InfiniminerGame.IM_RED;
+                }
+                explanation = BlockGuide.Description(block, player.Team, player.Class);
+            }
+            RenderMessageCenter(spriteBatch, label, new Vector2(ScreenWidth / 2, ScreenHeight - 20), color, Color.Black);
+            if (gameInstance.Settings.ShowTips && currentTime - equipmentChangedAt < 4 && explanation != "")
+                RenderMessageCenter(spriteBatch, explanation, new Vector2(ScreenWidth / 2, ScreenHeight - 52), Color.White, new Color(Color.Black, 0.75f));
+        }
+
+        // The guide's current tip, near the top of the screen, and the name of the block under the crosshair.
+        void RenderTips(SpriteBatch spriteBatch)
+        {
+            if (!gameInstance.Settings.ShowTips || _P.player.Dead || _P.player.Spectating)
+                return;
+
+            // What the crosshair is on (not plain dirt, which is everywhere).
+            BlockType looking = _P.LookingAt();
+            if (looking != BlockType.None && looking != BlockType.Dirt && looking != BlockType.DirtSign)
+            {
+                string description = BlockGuide.Description(looking, _P.player.Team, _P.player.Class);
+                RenderMessageCenter(spriteBatch, BlockGuide.Name(looking) + (description != "" ? ": " + description : ""),
+                    new Vector2(ScreenWidth / 2, ScreenHeight / 2 + 32), Color.White, new Color(Color.Black, 0.6f));
+            }
+
+            GuideState state = _P.GuideState(true);
+            string tip = _P.guide.Current == null ? null : _P.guide.Text(state, TipControls());
+            if (tip == null)
+                return;
+            // Between the radar (top left) and the right edge, below the score bar and match clock.
+            int width = Math.Clamp(ScreenWidth - 2 * 230, 300, 600);
+            List<string> lines = Wrap(tip, width - 24);
+            int lineHeight = 20, top = 56;
+            int height = (lines.Count + 1) * lineHeight + 16;
+            Rectangle box = new Rectangle(ScreenWidth / 2 - width / 2, top, width, height);
+            spriteBatch.Draw(texBlank, box, new Color(Color.Black, 0.75f));
+            spriteBatch.Draw(texBlank, new Rectangle(box.X, box.Y, 3, box.Height), new Color(255, 200, 40));
+            spriteBatch.DrawString(uiFont, "TIP  (TURN TIPS OFF IN OPTIONS)", new Vector2(box.X + 14, top + 8), new Color(255, 200, 40));
+            for (int i = 0; i < lines.Count; i++)
+                spriteBatch.DrawString(uiFont, lines[i], new Vector2(box.X + 14, top + 8 + (i + 1) * lineHeight), Color.White);
+        }
+
         public void Render(GraphicsDevice graphicsDevice)
         {
             // If we don't have _P, grab it from the current gameInstance.
@@ -283,18 +382,10 @@ namespace Infiniminer
                     RenderConstructionGun(graphicsDevice, spriteBatch, BlockType.None);
                     break;
 
-                default:
-                    {
-                        // Draw info about what we have equipped.
-                        PlayerTools currentTool = _P.player.SelectedTool;
-                        BlockType currentBlock = _P.player.SelectedBlock;
-                        string equipment = currentTool.ToString();
-                        if (currentTool == PlayerTools.ConstructionGun)
-                            equipment += " - " + currentBlock.ToString() + (_P.player.Sandbox ? " (FREE)" : " (" + BlockInformation.GetCost(currentBlock) + ")");
-                        RenderMessageCenter(spriteBatch, equipment, new Vector2(ScreenWidth / 2, ScreenHeight - 20), Color.White, Color.Black);
-                    }
-                    break;
             }
+
+            if (!_P.player.Dead && !_P.player.Spectating)
+                RenderEquipment(spriteBatch);
 
             if (gameInstance.DrawFrameRate)
                 RenderMessageCenter(spriteBatch, String.Format("FPS: {0:000}", gameInstance.FrameRate), new Vector2(60, ScreenHeight - 20), Color.Gray, Color.Black);
@@ -335,6 +426,10 @@ namespace Infiniminer
                 int secondsLeft = (int)Math.Max(0, Math.Ceiling(_P.matchEndTime - currentTime));
                 RenderMessageCenter(spriteBatch, string.Format("TIME LEFT: {0}:{1:00}", secondsLeft / 60, secondsLeft % 60), new Vector2(ScreenWidth / 2, 34), secondsLeft <= 60 ? InfiniminerGame.IM_RED : Color.White, Color.Black);
             }
+
+            // Tips for new players.
+            if (_P.chatMode == ChatMessageType.None)
+                RenderTips(spriteBatch);
 
             // Draw player information.
             bool scoreboardHeld = Keyboard.GetState().IsKeyDown(gameInstance.Settings.Key(GameAction.Scoreboard)) || gameInstance.GamePadInput.IsDown(Buttons.Back);

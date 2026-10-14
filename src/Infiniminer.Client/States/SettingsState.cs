@@ -180,6 +180,19 @@ namespace Infiniminer.States
                 });
                 rows.Add(new Row
                 {
+                    // Turning tips back on starts the guide again from the first tip.
+                    Label = "TIPS FOR NEW PLAYERS",
+                    Value = () => OnOff(Settings.ShowTips),
+                    Change = direction =>
+                    {
+                        Settings.ShowTips = !Settings.ShowTips;
+                        if (Settings.ShowTips)
+                            Settings.TipsDone.Clear();
+                        Changed();
+                    },
+                });
+                rows.Add(new Row
+                {
                     Label = "SHOW FPS",
                     Value = () => OnOff(Settings.ShowFps),
                     Change = direction => { Settings.ShowFps = !Settings.ShowFps; Changed(); },

@@ -38,6 +38,10 @@ GAME (or "upnp = true" for a dedicated server). The game asks your router to for
 you the address to give out (the in-game menu's INTERNET row copies it). If the router doesn't support it
 or has it switched off, the game says so: forward UDP port 5565 to your computer by hand instead.
 
+NEW TO THE GAME? Tips at the top of the screen walk you through it one step at a time (dig down, find ore,
+build a ladder to climb out, find treasure, bank it), and the block under your crosshair is named and explained.
+Each tip goes away once you've done it; TIPS FOR NEW PLAYERS in OPTIONS turns them off, or back on from the start.
+
 The client finds servers on your LAN automatically, and lists the last five servers you joined (so a
 server joined by address is one click away next time). When a match ends and the server restarts with a
 new map, the game rejoins it by itself. Use [ DIRECT CONNECT ] for anything else; it accepts

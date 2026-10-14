@@ -132,6 +132,10 @@ namespace Infiniminer.States
                 }
             }
 
+            // Move the new player's guide on.
+            if (_P.guide.Update(_P.GuideState(Game.Settings.ShowTips), (float)gameTime.ElapsedGameTime.TotalSeconds))
+                Game.SaveSettings();
+
             // Update the player"s position.
             if (!_P.player.Dead)
                 UpdatePlayerPosition(gameTime, keyState);
