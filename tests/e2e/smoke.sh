@@ -118,6 +118,15 @@ press DPadRight
 pad "lt 0"
 wait_for "$work/server.log" "FOUND GOLD!"
 
+echo "Chatting with the on-screen keyboard (right stick click)..."
+press RightStick
+press DPadDown 0.2; press DPadDown 0.2                      # the A row
+for i in 1 2 3 4; do press DPadRight 0.2; done              # G
+press A 0.2; press A 0.2
+shot on_screen_keyboard
+press Start
+wait_for "$work/server.log" "CHAT: (Player) GG"
+
 echo "Opening and closing the in-game menu..."
 press Start 1
 wait_for "$work/client.log" "TRACE STATE GameMenuState"

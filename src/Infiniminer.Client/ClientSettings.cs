@@ -43,6 +43,7 @@ namespace Infiniminer
         public bool ColorBlind = false;
         public int ControllerSensitivity = 10;  // 1-20: right stick look speed
         public bool Vibration = true;
+        public bool DeckSetupDone = false;  // Steam Deck defaults applied once (1280x800)
         public string ServerListUrl = "";
 
         // Servers joined recently, newest first: the address as typed or listed ("host:port") and a name.
@@ -86,6 +87,20 @@ namespace Infiniminer
                 [GameAction.DepositOre] = Keys.D1,
                 [GameAction.WithdrawOre] = Keys.D2,
             };
+        }
+
+        // On a Steam Deck (Steam sets SteamDeck=1), the first run opens at the Deck's 1280x800. In Game Mode the
+        // window fills the screen anyway; in Desktop Mode OPTIONS > FULLSCREEN is there. Returns true if anything
+        // changed. Later changes in OPTIONS are kept.
+        public bool ApplySteamDeckDefaults(bool onSteamDeck)
+        {
+            if (!onSteamDeck || DeckSetupDone)
+                return false;
+            Fullscreen = false;
+            Width = 1280;
+            Height = 800;
+            DeckSetupDone = true;
+            return true;
         }
 
         // Remembers a server we joined; it moves to the top of the list.
@@ -171,6 +186,7 @@ namespace Infiniminer
             settings.ColorBlind = dataFile.GetBool("colorblind", settings.ColorBlind);
             settings.ControllerSensitivity = Math.Clamp(dataFile.GetInt("controllersensitivity", settings.ControllerSensitivity), MinSensitivity, MaxSensitivity);
             settings.Vibration = dataFile.GetBool("vibration", settings.Vibration);
+            settings.DeckSetupDone = dataFile.GetBool("deck_setup", settings.DeckSetupDone);
             settings.ServerListUrl = dataFile.GetString("serverlist", settings.ServerListUrl);
             for (int i = MaxRecentServers; i >= 1; i--)
             {
@@ -226,6 +242,7 @@ namespace Infiniminer
             Line("# Controller: right stick look speed from 1 to 20, and whether the controller vibrates.");
             Line("controllersensitivity = " + ControllerSensitivity.ToString(CultureInfo.InvariantCulture));
             Line("vibration = " + Bool(Vibration));
+            Line("deck_setup = " + Bool(DeckSetupDone));
             Line();
             Line("# This value specifies the override volume multiplier, for people who find the sounds too loud.");
             Line("volume = " + Volume.ToString("0.0#", CultureInfo.InvariantCulture));

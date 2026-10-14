@@ -42,6 +42,11 @@ namespace Infiniminer.States
             }
         }
 
+        public override string TextInputPrompt
+        {
+            get { return editingName ? "GAME NAME: " + Settings.HostName + "_" : null; }
+        }
+
         public override void OnEnter(Type oldState)
         {
             base.OnEnter(oldState);

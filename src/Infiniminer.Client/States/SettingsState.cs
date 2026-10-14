@@ -46,6 +46,11 @@ namespace Infiniminer.States
             }
         }
 
+        public override string TextInputPrompt
+        {
+            get { return editingName ? "YOUR NAME: " + Settings.Handle + "_" : null; }
+        }
+
         // Opened from the game (directly or through its menu): stay connected.
         bool InGame
         {
@@ -99,7 +104,9 @@ namespace Infiniminer.States
                 rows.Add(new Row
                 {
                     Label = "RESOLUTION",
-                    Value = () => Settings.Width + " X " + Settings.Height,
+                    // Fullscreen is borderless at the desktop's resolution; this sizes the window.
+                    Value = () => Settings.Fullscreen ? "DESKTOP (FULLSCREEN)" : Settings.Width + " X " + Settings.Height,
+                    Enabled = () => !Settings.Fullscreen,
                     Change = direction =>
                     {
                         List<Point> sizes = Resolutions();

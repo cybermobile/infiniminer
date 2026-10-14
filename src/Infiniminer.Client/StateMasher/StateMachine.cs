@@ -35,6 +35,10 @@ namespace StateMasher
         public readonly Infiniminer.GamePadInput GamePadInput = CreateGamePadInput();
         public bool UsingGamePad { get; private set; }
 
+        // The on-screen keyboard, shown while a state takes text and the controller is in use.
+        protected readonly Infiniminer.OnScreenKeyboard ScreenKeyboard = new Infiniminer.OnScreenKeyboard();
+        protected bool KeyboardOpen { get; private set; }
+
         static Infiniminer.GamePadInput CreateGamePadInput()
         {
             Infiniminer.ScriptedGamePad scripted = Infiniminer.ScriptedGamePad.FromEnvironment();
@@ -144,6 +148,33 @@ namespace StateMasher
             if (GamePadInput.HadInput)
                 UsingGamePad = true;
 
+            // Typing with the controller: the keyboard takes all of its input.
+            if (currentState.TextInputPrompt != null && UsingGamePad)
+            {
+                if (!KeyboardOpen)
+                {
+                    ScreenKeyboard.Reset();
+                    KeyboardOpen = true;
+                    return;     // the press that started typing isn't a keystroke
+                }
+                foreach (Infiniminer.MenuDirection direction in GamePadInput.Navigation)
+                    ScreenKeyboard.Move(direction);
+                foreach (Buttons button in GamePadInput.Pressed)
+                {
+                    switch (ScreenKeyboard.Press(button, out char typed))
+                    {
+                        case Infiniminer.OnScreenKeyboard.Action.Type: currentState.OnTextInput(typed); break;
+                        case Infiniminer.OnScreenKeyboard.Action.Delete: currentState.OnKeyDown(Keys.Back); break;
+                        case Infiniminer.OnScreenKeyboard.Action.Done: currentState.OnKeyDown(Keys.Enter); break;
+                        case Infiniminer.OnScreenKeyboard.Action.Cancel: currentState.OnKeyDown(Keys.Escape); break;
+                    }
+                    if (currentState.TextInputPrompt == null)
+                        break;
+                }
+                return;
+            }
+            KeyboardOpen = false;
+
             // In menus the controller drives the keyboard controls: the D-pad or left stick are the arrow
             // keys, A is Enter and B is Escape.
             if (currentState.UsesMenuNavigation)
@@ -165,6 +196,10 @@ namespace StateMasher
                 currentState.OnGamePadButtonDown(button);
         }
 
+        protected virtual void DrawOnScreenKeyboard(string prompt)
+        {
+        }
+
         protected override void Draw(GameTime gameTime)
         {
             // Frames per second, measured over the last second.
@@ -182,6 +217,10 @@ namespace StateMasher
             // Call OnRenderAtUpdate.
             if (currentState != null && propertyBag != null)
                 currentState.OnRenderAtUpdate(GraphicsDevice, gameTime);
+
+            // The on-screen keyboard goes over everything.
+            if (currentState != null && KeyboardOpen && currentState.TextInputPrompt != null && propertyBag != null)
+                DrawOnScreenKeyboard(currentState.TextInputPrompt);
 
             // If we have one queued, call OnRenderAtEnter.
             if (currentState != null && needToRenderOnEnter && propertyBag != null)

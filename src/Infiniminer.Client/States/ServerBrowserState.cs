@@ -167,7 +167,7 @@ namespace Infiniminer.States
             else
             {
                 string hint = Game.Rejoin.Active ? (_SM.UsingGamePad ? "B: STOP REJOINING" : "ESC: STOP REJOINING")
-                    : _SM.UsingGamePad ? "A: JOIN   X: REFRESH   Y: OPTIONS   B: BACK" : "UP/DOWN AND ENTER: JOIN   F5: REFRESH";
+                    : _SM.UsingGamePad ? "A: JOIN   X: REFRESH   Y: OPTIONS   BACK: ADDRESS   B: BACK" : "UP/DOWN AND ENTER: JOIN   F5: REFRESH";
                 Vector2 hintSize = uiFont.MeasureString(hint);
                 spriteBatch.DrawString(uiFont, hint, new Vector2((int)(InfiniminerGame.MenuWidth / 2 - hintSize.X / 2), drawRect.Y + 690), new Color(150, 150, 150));
             }
@@ -320,10 +320,23 @@ namespace Infiniminer.States
             Game.StartServerDiscovery();
         }
 
+        public override string TextInputPrompt
+        {
+            get { return directConnectIPEnter ? "SERVER ADDRESS: " + directConnectIP + "_" : null; }
+        }
+
         public override void OnGamePadButtonDown(Buttons button)
         {
             if (directConnectIPEnter)
                 return;
+            // Back: type an address with the on-screen keyboard.
+            if (button == Buttons.Back)
+            {
+                directConnectIPEnter = true;
+                directConnectIP = "";
+                Game.StatusMessage = "";
+                _P.PlaySound(InfiniminerSound.ClickHigh);
+            }
             if (button == Buttons.X)
                 Refresh();
             if (button == Buttons.Y || button == Buttons.Start)

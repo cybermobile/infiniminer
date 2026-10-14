@@ -210,6 +210,7 @@ namespace Infiniminer
             ("B", "WITHDRAW ORE (AT A BANK)"),
             ("Y", "PING TEAM"),
             ("LT + D-PAD", "QUICK TEAM CHAT"),
+            ("RIGHT / LEFT STICK CLICK", "CHAT (ALL / TEAM)"),
             ("BACK (HOLD)", "SCOREBOARD"),
             ("START", "MENU"),
         };

@@ -89,12 +89,21 @@ namespace Infiniminer
         }
 
         // Applies the resolution and fullscreen settings to the window.
+        // Fullscreen is borderless at the desktop's resolution: no display mode change, which is what compositors
+        // (the Steam Deck's Game Mode, Wayland, macOS spaces) handle best. The resolution setting sizes the window.
+        void ConfigureDisplay()
+        {
+            graphicsDeviceManager.HardwareModeSwitch = false;
+            graphicsDeviceManager.IsFullScreen = Settings.Fullscreen;
+            DisplayMode desktop = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode;
+            graphicsDeviceManager.PreferredBackBufferWidth = Settings.Fullscreen ? desktop.Width : Settings.Width;
+            graphicsDeviceManager.PreferredBackBufferHeight = Settings.Fullscreen ? desktop.Height : Settings.Height;
+        }
+
         public void ApplyDisplaySettings()
         {
             resizing = true;
-            graphicsDeviceManager.IsFullScreen = Settings.Fullscreen;
-            graphicsDeviceManager.PreferredBackBufferWidth = Settings.Width;
-            graphicsDeviceManager.PreferredBackBufferHeight = Settings.Height;
+            ConfigureDisplay();
             graphicsDeviceManager.ApplyChanges();
             resizing = false;
             OnDisplayChanged();
@@ -301,6 +310,13 @@ namespace Infiniminer
 
         string announcedInternetStatus;
 
+        protected override void DrawOnScreenKeyboard(string prompt)
+        {
+            SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, MenuSampler, null, null, null, MenuTransform);
+            ScreenKeyboard.Draw(SpriteBatch, Assets.WhitePixel, Assets.UiFont, prompt);
+            SpriteBatch.End();
+        }
+
         public void UpdateNetwork(GameTime gameTime)
         {
             currentGameTime = gameTime;
@@ -415,11 +431,11 @@ namespace Infiniminer
             graphicsDeviceManager.PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8;
 
             Settings = ClientSettings.Load(ConfigPath);
+            if (Settings.ApplySteamDeckDefaults(Environment.GetEnvironmentVariable("SteamDeck") == "1"))
+                SaveSettings();
             NoSound = Settings.NoSound;
             ColorBlindMode = Settings.ColorBlind;
-            graphicsDeviceManager.IsFullScreen = Settings.Fullscreen;
-            graphicsDeviceManager.PreferredBackBufferWidth = Settings.Width;
-            graphicsDeviceManager.PreferredBackBufferHeight = Settings.Height;
+            ConfigureDisplay();
             Window.AllowUserResizing = true;
             Window.ClientSizeChanged += OnClientSizeChanged;
 

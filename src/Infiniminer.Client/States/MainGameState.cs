@@ -481,11 +481,33 @@ namespace Infiniminer.States
                 Pad.Rumble(strength, seconds);
         }
 
+        public override string TextInputPrompt
+        {
+            get
+            {
+                if (_P.chatMode == ChatMessageType.None)
+                    return null;
+                return (_P.chatMode == ChatMessageType.SayAll ? "SAY TO ALL: " : "SAY TO TEAM: ") + _P.chatEntryBuffer + "_";
+            }
+        }
+
         public override void OnGamePadButtonDown(Buttons button)
         {
-            // While typing a chat message the controller does nothing.
+            // While typing a chat message the controller drives the on-screen keyboard.
             if (_P.chatMode != ChatMessageType.None)
                 return;
+
+            // Chat with the on-screen keyboard: right stick click for everyone, left stick click for the team.
+            if (button == Buttons.RightStick)
+            {
+                _P.chatMode = ChatMessageType.SayAll;
+                return;
+            }
+            if (button == Buttons.LeftStick)
+            {
+                _P.chatMode = _P.player.Team == PlayerTeam.Red ? ChatMessageType.SayRedTeam : ChatMessageType.SayBlueTeam;
+                return;
+            }
 
             if (button == Buttons.Start)
             {

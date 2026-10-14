@@ -93,4 +93,6 @@ The original server trusted almost everything the client said.
 - [x] Bots of every class: prospectors sense treasure further away; engineers gather ore, climb out on ladders,
       build the team a bank and stock it; sappers blast through rock from a safe distance
 - [x] Smarter bots: flee lava, take diamonds home straight away, find another way up when climbing stalls
-- [ ] Steam Deck: an on-screen keyboard for controller text entry, Deck defaults, setup notes
+- [x] Steam Deck readiness: an on-screen keyboard for controller text entry (names, addresses, chat), chat
+      from the controller, 1280x800 on first run on a Deck, setup notes; fullscreen is now borderless
+- [ ] Try it on a real Steam Deck

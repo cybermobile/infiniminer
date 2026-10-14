@@ -167,6 +167,57 @@ namespace Infiniminer.Tests
         }
 
         [Fact]
+        public void TheOnScreenKeyboardTypesWhatIsSelected()
+        {
+            OnScreenKeyboard keyboard = new OnScreenKeyboard();
+            Assert.Equal("1", keyboard.Selected);
+
+            // Down twice and right four times: G.
+            keyboard.Move(MenuDirection.Down);
+            keyboard.Move(MenuDirection.Down);
+            for (int i = 0; i < 4; i++)
+                keyboard.Move(MenuDirection.Right);
+            Assert.Equal(OnScreenKeyboard.Action.Type, keyboard.Press(Buttons.A, out char typed));
+            Assert.Equal('G', typed);
+
+            // Rows wrap, and the short bottom row keeps the position roughly in line.
+            keyboard.Move(MenuDirection.Up);
+            keyboard.Move(MenuDirection.Up);
+            keyboard.Move(MenuDirection.Up);
+            Assert.Equal(OnScreenKeyboard.Delete, keyboard.Selected);
+            Assert.Equal(OnScreenKeyboard.Action.Delete, keyboard.Press(Buttons.A, out _));
+            keyboard.Move(MenuDirection.Right);
+            Assert.Equal(OnScreenKeyboard.Action.Done, keyboard.Press(Buttons.A, out _));
+
+            // Buttons that work anywhere.
+            Assert.Equal(OnScreenKeyboard.Action.Type, keyboard.Press(Buttons.X, out typed));
+            Assert.Equal(' ', typed);
+            Assert.Equal(OnScreenKeyboard.Action.Delete, keyboard.Press(Buttons.B, out _));
+            Assert.Equal(OnScreenKeyboard.Action.Done, keyboard.Press(Buttons.Start, out _));
+            Assert.Equal(OnScreenKeyboard.Action.Cancel, keyboard.Press(Buttons.Back, out _));
+            Assert.Equal(OnScreenKeyboard.Action.None, keyboard.Press(Buttons.Y, out _));
+        }
+
+        [Fact]
+        public void TheSteamDeckGetsItsResolutionOnce()
+        {
+            ClientSettings settings = new ClientSettings();
+            Assert.False(settings.ApplySteamDeckDefaults(onSteamDeck: false));
+            Assert.Equal((1024, 768), (settings.Width, settings.Height));
+
+            Assert.True(settings.ApplySteamDeckDefaults(onSteamDeck: true));
+            Assert.Equal((1280, 800), (settings.Width, settings.Height));
+            Assert.True(settings.DeckSetupDone);
+
+            // A player who changes it afterwards keeps their choice.
+            settings.Fullscreen = true;
+            settings.Width = 800;
+            Assert.False(settings.ApplySteamDeckDefaults(onSteamDeck: true));
+            Assert.True(settings.Fullscreen);
+            Assert.Equal(800, settings.Width);
+        }
+
+        [Fact]
         public void ControllerSettingsAreSaved()
         {
             string path = Path.Combine(Path.GetTempPath(), "infiniminer-controller-" + Guid.NewGuid().ToString("N") + ".txt");

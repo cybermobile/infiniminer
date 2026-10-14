@@ -61,6 +61,13 @@ namespace StateMasher
             get { return true; }
         }
 
+        // While the state is taking text (a name, an address, chat), what to show above the on-screen keyboard
+        // that appears for controller players; null otherwise.
+        public virtual string TextInputPrompt
+        {
+            get { return null; }
+        }
+
         // Every controller button press (after any menu navigation keys it caused).
         public virtual void OnGamePadButtonDown(Buttons button)
         {

@@ -97,8 +97,16 @@ In game:
     Y            ping your team            Back (hold)  scoreboard
     LT + D-pad   quick team chat           Start        menu
 
-Typing a chat message needs a keyboard; LT + D-pad sends NEED ORE!, FOUND GOLD!, HELP ME! or ENEMY
-SPOTTED! to your team. On-screen prompts switch between keyboard and controller buttons depending on
+Wherever text is needed (your name, a server address, chat), an on-screen keyboard appears for controller
+players: D-pad or stick to move, A to type, B to delete, X for a space, Start when done, Back to cancel. In
+game, click the right stick to chat to everyone or the left stick to chat to your team; in the server list,
+Back types an address. LT + D-pad sends NEED ORE!, FOUND GOLD!, HELP ME! or ENEMY SPOTTED! to your team.
+
+STEAM DECK: download the Linux AppImage in Desktop Mode, make it executable (right-click > Properties >
+Permissions), and add it to Steam with "Add a Non-Steam Game". In Game Mode, choose a gamepad layout for it
+(the "Gamepad" template, which presents the Deck's controls as an Xbox controller) and play with the controls
+above; the first run opens at the Deck's 1280x800, which Game Mode shows full screen. Untested on a real Deck
+so far. On-screen prompts switch between keyboard and controller buttons depending on
 which you used last.
 
 Settings are saved in client.config.txt; the server reads server.config.txt and keeps banlist.txt and
