@@ -42,7 +42,7 @@ namespace Infiniminer
 
             foreach (Player p in _P.playerList.Values)
             {
-                if (p.Alive && p.ID != _P.playerMyId)
+                if (p.Alive && p.ID != _P.player.Id)
                 {
                     p.SpriteModel.Draw(_P.playerCamera.ViewMatrix,
                                        _P.playerCamera.ProjectionMatrix,
@@ -64,11 +64,11 @@ namespace Infiniminer
 
             foreach (Player p in _P.playerList.Values)
             {
-                if (p.Alive && p.ID != _P.playerMyId)
+                if (p.Alive && p.ID != _P.player.Id)
                 {
                     // Figure out what text we should draw on the player - only for teammates.
                     string playerText = "";
-                    if (p.ID != _P.playerMyId && p.Team == _P.playerTeam)
+                    if (p.ID != _P.player.Id && p.Team == _P.player.Team)
                     {
                         playerText = p.Handle;
                         if (p.Ping > 0)

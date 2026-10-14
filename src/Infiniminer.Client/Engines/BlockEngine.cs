@@ -203,9 +203,9 @@ namespace Infiniminer
         {
             if (blockType == BlockType.None)
                 return true;
-            if (gameInstance.propertyBag.playerTeam == PlayerTeam.Red && blockType == BlockType.TransRed)
+            if (gameInstance.propertyBag.player.Team == PlayerTeam.Red && blockType == BlockType.TransRed)
                 return true;
-            if (gameInstance.propertyBag.playerTeam == PlayerTeam.Blue && blockType == BlockType.TransBlue)
+            if (gameInstance.propertyBag.player.Team == PlayerTeam.Blue && blockType == BlockType.TransBlue)
                 return true;
             return false;
         }

@@ -24,7 +24,7 @@ namespace Infiniminer.States
 
         bool CanChangeClass
         {
-            get { return _P.playerPosition.Y > _P.SurfaceHeight; }
+            get { return _P.player.Position.Y > _P.SurfaceHeight; }
         }
 
         public override void OnEnter(Type oldState)
@@ -51,7 +51,7 @@ namespace Infiniminer.States
                 {
                     Label = "RESPAWN",
                     Value = () => "COMMITS PIXELCIDE",
-                    Enabled = () => !_P.playerDead,
+                    Enabled = () => !_P.player.Dead,
                     Activate = () => { _P.KillPlayer("HAS COMMMITTED PIXELCIDE!"); Go(typeof(MainGameState)); },
                 },
                 new Row

@@ -42,30 +42,9 @@ namespace Infiniminer
 
         // Player variables.
         public Camera playerCamera = null;
-        public Vector3 playerPosition = Vector3.Zero;
-        public Vector3 playerVelocity = Vector3.Zero;
-        public PlayerClass playerClass;
-        public PlayerTools[] playerTools = new PlayerTools[1] { PlayerTools.Pickaxe };
-        public int playerToolSelected = 0;
-        public BlockType[] playerBlocks = new BlockType[1] {BlockType.None};
-        public int playerBlockSelected = 0;
-        public PlayerTeam playerTeam = PlayerTeam.Red;
-        public bool playerDead = true;
-        public bool respawnPending = false;
-        public byte positionEpoch = 0;
-        public uint playerOre = 0;
-        public uint playerCash = 0;
-        public uint playerWeight = 0;
-        public uint playerOreMax = 0;
-        public uint playerWeightMax = 0;
-        public bool playerRadarMute = false;
-        public float playerToolCooldown = 0;
-        public string playerHandle = "Player";
-        public uint playerMyId = 0;
-        public float radarCooldown = 0;
-        public float radarDistance = 0;
-        public float radarValue = 0;
-        public float constructionGunAnimation = 0;
+
+        // The player at this computer.
+        public readonly LocalPlayer player = new LocalPlayer();
 
         // Team variables.
         public uint teamOre = 0;
@@ -150,14 +129,14 @@ namespace Infiniminer
         // Shows the death screen. Called for deaths we notice ourselves and for deaths the server decides.
         public void EnterDeathState()
         {
-            if (playerDead && screenEffect == ScreenEffect.Death)
+            if (player.Dead && screenEffect == ScreenEffect.Death)
                 return;
 
             PlaySound(InfiniminerSound.Death);
-            playerPosition = new Vector3(randGen.Next(2, mapSize - 2), mapSize + 2, randGen.Next(2, mapSize - 2));
-            playerVelocity = Vector3.Zero;
-            playerDead = true;
-            respawnPending = false;
+            player.Position = new Vector3(randGen.Next(2, mapSize - 2), mapSize + 2, randGen.Next(2, mapSize - 2));
+            player.Velocity = Vector3.Zero;
+            player.Dead = true;
+            player.RespawnPending = false;
             screenEffect = ScreenEffect.Death;
             screenEffectCounter = 0;
         }
@@ -165,10 +144,10 @@ namespace Infiniminer
         // Asks the server to respawn us; it picks the spawn point and replies with our new position.
         public void RespawnPlayer()
         {
-            if (!IsConnected || respawnPending)
+            if (!IsConnected || player.RespawnPending)
                 return;
 
-            respawnPending = true;
+            player.RespawnPending = true;
             screenEffect = ScreenEffect.None;
             screenEffectCounter = 0;
 
@@ -183,17 +162,17 @@ namespace Infiniminer
                 screenEffect = ScreenEffect.Teleport;
                 screenEffectCounter = 0;
             }
-            playerPosition = position;
-            playerVelocity = Vector3.Zero;
-            positionEpoch = epoch;
+            player.Position = position;
+            player.Velocity = Vector3.Zero;
+            player.PositionEpoch = epoch;
             UpdateCamera();
         }
 
         // The server confirmed our respawn.
         public void OnRespawned()
         {
-            playerDead = false;
-            respawnPending = false;
+            player.Dead = false;
+            player.RespawnPending = false;
             screenEffect = ScreenEffect.None;
             screenEffectCounter = 0;
             UpdateCamera();
@@ -206,7 +185,7 @@ namespace Infiniminer
 
         public void PlaySound(InfiniminerSound sound, Vector3 position)
         {
-            sounds.Play(sound, position - playerPosition, playerCamera.GetRightVector());
+            sounds.Play(sound, position - player.Position, playerCamera.GetRightVector());
         }
 
         public void PlaySoundForEveryone(InfiniminerSound sound, Vector3 position)
@@ -234,26 +213,26 @@ namespace Infiniminer
                         newPosition.X += (float)(2 - screenEffectCounter) * (float)(randGen.NextDouble() - 0.5) * 0.5f;
                         newPosition.Y += (float)(2 - screenEffectCounter) * (float)(randGen.NextDouble() - 0.5) * 0.5f;
                         newPosition.Z += (float)(2 - screenEffectCounter) * (float)(randGen.NextDouble() - 0.5) * 0.5f;
-                        if (!blockEngine.SolidAtPointForPlayer(newPosition) && (newPosition-playerPosition).Length() < 0.7f)
+                        if (!blockEngine.SolidAtPointForPlayer(newPosition) && (newPosition-player.Position).Length() < 0.7f)
                             playerCamera.Position = newPosition;
                     }
                     // For 2 to 3, move the camera back.
                     else if (screenEffectCounter < 3)
                     {
-                        Vector3 lerpVector = playerPosition - playerCamera.Position;
+                        Vector3 lerpVector = player.Position - playerCamera.Position;
                         playerCamera.Position += 0.5f * lerpVector;
                     }
                     else
                     {
                         screenEffect = ScreenEffect.None;
                         screenEffectCounter = 0;
-                        playerCamera.Position = playerPosition;
+                        playerCamera.Position = player.Position;
                     }
                 }
             }
             else
             {
-                playerCamera.Position = playerPosition;
+                playerCamera.Position = player.Position;
             }
             playerCamera.Update();
         }
@@ -287,14 +266,13 @@ namespace Infiniminer
             Send(ClientMessages.WithdrawOre());
         }
 
-        public void SetPlayerTeam(PlayerTeam playerTeam)
+        public void SetPlayerTeam(PlayerTeam team)
         {
             if (!IsConnected)
                 return;
 
-            this.playerTeam = playerTeam;
-
-            Send(ClientMessages.SetTeam(playerTeam));
+            player.SetTeam(team);
+            Send(ClientMessages.SetTeam(team));
         }
 
         public void SetPlayerClass(PlayerClass playerClass)
@@ -302,15 +280,8 @@ namespace Infiniminer
             if (!IsConnected)
                 return;
 
-            this.playerClass = playerClass;
-
+            player.SetClass(playerClass);
             Send(ClientMessages.SelectClass(playerClass));
-
-            playerToolSelected = 0;
-            playerBlockSelected = 0;
-
-            playerTools = GameRules.GetTools(playerClass);
-            playerBlocks = GameRules.GetBlocks(playerClass, playerTeam);
         }
 
         public void FireRadar()
@@ -318,7 +289,7 @@ namespace Infiniminer
             if (!IsConnected)
                 return;
 
-            playerToolCooldown = GetToolCooldown(PlayerTools.ProspectingRadar);
+            player.ToolCooldown = GetToolCooldown(PlayerTools.ProspectingRadar);
 
             UseTool(PlayerTools.ProspectingRadar);
         }
@@ -346,9 +317,9 @@ namespace Infiniminer
         void PredictDig(bool drill)
         {
             Vector3 hitPoint = Vector3.Zero, buildPoint = Vector3.Zero;
-            if (!blockEngine.RayCollision(playerPosition, playerCamera.GetLookVector(), 2, 10, ref hitPoint, ref buildPoint))
+            if (!blockEngine.RayCollision(player.Position, playerCamera.GetLookVector(), 2, 10, ref hitPoint, ref buildPoint))
                 return;
-            bool removed = GameRules.DigRemovesBlock(blockEngine.BlockAtPoint(hitPoint), drill, playerWeight, playerWeightMax);
+            bool removed = GameRules.DigRemovesBlock(blockEngine.BlockAtPoint(hitPoint), drill, player.Weight, player.WeightMax);
             var block = BlockOf(hitPoint);
             if (removed && InsideMap(block))
                 blockPredictor.Predict(block.x, block.y, block.z, BlockType.None, currentTime);
@@ -358,9 +329,9 @@ namespace Infiniminer
         void PredictBuild(BlockType blockType)
         {
             Vector3 hitPoint = Vector3.Zero, buildPoint = Vector3.Zero;
-            if (!blockEngine.RayCollision(playerPosition, playerCamera.GetLookVector(), 6, 25, ref hitPoint, ref buildPoint))
+            if (!blockEngine.RayCollision(player.Position, playerCamera.GetLookVector(), 6, 25, ref hitPoint, ref buildPoint))
                 return;
-            if (playerOre < BlockInformation.GetCost(blockType) || blockEngine.BlockAtPoint(hitPoint) == BlockType.Lava)
+            if (player.Ore < BlockInformation.GetCost(blockType) || blockEngine.BlockAtPoint(hitPoint) == BlockType.Lava)
                 return;
             var block = BlockOf(buildPoint);
             if (!InsideMap(block))
@@ -368,8 +339,8 @@ namespace Infiniminer
             // Nobody may be standing there (the server checks the same cells).
             foreach (Player p in playerList.Values)
             {
-                Vector3 position = p.ID == playerMyId ? playerPosition : p.Position;
-                if ((p.Alive || p.ID == playerMyId) && (int)position.X == block.x && (int)position.Z == block.z
+                Vector3 position = p.ID == player.Id ? player.Position : p.Position;
+                if ((p.Alive || p.ID == player.Id) && (int)position.X == block.x && (int)position.Z == block.z
                     && ((int)position.Y == block.y || (int)position.Y - 1 == block.y))
                     return;
             }
@@ -378,7 +349,7 @@ namespace Infiniminer
 
         void UseTool(PlayerTools tool, BlockType blockType = BlockType.None)
         {
-            Send(ClientMessages.UseTool(playerPosition.ToNumerics(), playerCamera.GetLookVector().ToNumerics(), tool, blockType));
+            Send(ClientMessages.UseTool(player.Position.ToNumerics(), playerCamera.GetLookVector().ToNumerics(), tool, blockType));
         }
 
         public void FireDrill()
@@ -386,7 +357,7 @@ namespace Infiniminer
             if (!IsConnected)
                 return;
 
-            playerToolCooldown = GetToolCooldown(PlayerTools.Drill);
+            player.ToolCooldown = GetToolCooldown(PlayerTools.Drill);
 
             UseTool(PlayerTools.Drill);
             PredictDig(true);
@@ -397,7 +368,7 @@ namespace Infiniminer
             if (!IsConnected)
                 return;
 
-            playerToolCooldown = GetToolCooldown(PlayerTools.Pickaxe);
+            player.ToolCooldown = GetToolCooldown(PlayerTools.Pickaxe);
 
             UseTool(PlayerTools.Pickaxe);
             PredictDig(false);
@@ -408,8 +379,8 @@ namespace Infiniminer
             if (!IsConnected)
                 return;
 
-            playerToolCooldown = GetToolCooldown(PlayerTools.ConstructionGun);
-            constructionGunAnimation = -5;
+            player.ToolCooldown = GetToolCooldown(PlayerTools.ConstructionGun);
+            player.ConstructionGunAnimation = -5;
 
             UseTool(PlayerTools.ConstructionGun, blockType);
             PredictBuild(blockType);
@@ -420,8 +391,8 @@ namespace Infiniminer
             if (!IsConnected)
                 return;
 
-            playerToolCooldown = GetToolCooldown(PlayerTools.DeconstructionGun);
-            constructionGunAnimation = -5;
+            player.ToolCooldown = GetToolCooldown(PlayerTools.DeconstructionGun);
+            player.ConstructionGunAnimation = -5;
 
             UseTool(PlayerTools.DeconstructionGun);
         }
@@ -431,20 +402,20 @@ namespace Infiniminer
             if (!IsConnected)
                 return;
 
-            playerToolCooldown = GetToolCooldown(PlayerTools.Detonator);
+            player.ToolCooldown = GetToolCooldown(PlayerTools.Detonator);
 
             UseTool(PlayerTools.Detonator);
         }
 
         public void ToggleRadar()
         {
-            playerRadarMute = !playerRadarMute;
+            player.RadarMute = !player.RadarMute;
             PlaySound(InfiniminerSound.RadarSwitch);
         }
 
         public void ReadRadar(ref float distanceReading, ref float valueReading)
         {
-            (distanceReading, valueReading) = Radar.Scan(blockEngine.BlockAtPoint, playerPosition, playerCamera.GetLookVector());
+            (distanceReading, valueReading) = Radar.Scan(blockEngine.BlockAtPoint, player.Position, playerCamera.GetLookVector());
         }
 
         // Returns true if the player is able to use a bank right now.
@@ -453,21 +424,21 @@ namespace Infiniminer
             // Figure out what we're looking at.
             Vector3 hitPoint = Vector3.Zero;
             Vector3 buildPoint = Vector3.Zero;
-            if (!blockEngine.RayCollision(playerPosition, playerCamera.GetLookVector(), 2.5f, 25, ref hitPoint, ref buildPoint))
+            if (!blockEngine.RayCollision(player.Position, playerCamera.GetLookVector(), 2.5f, 25, ref hitPoint, ref buildPoint))
                 return false;
 
             // If it's a valid bank object, we're good!
             BlockType blockType = blockEngine.BlockAtPoint(hitPoint);
-            if (blockType == BlockType.BankRed && playerTeam == PlayerTeam.Red)
+            if (blockType == BlockType.BankRed && player.Team == PlayerTeam.Red)
                 return true;
-            if (blockType == BlockType.BankBlue && playerTeam == PlayerTeam.Blue)
+            if (blockType == BlockType.BankBlue && player.Team == PlayerTeam.Blue)
                 return true;
             return false;
         }
 
         public float GetToolCooldown(PlayerTools tool)
         {
-            return GameRules.GetToolCooldown(tool, playerClass);
+            return GameRules.GetToolCooldown(tool, player.Class);
         }
 
         public void SendPlayerUpdate()
@@ -475,8 +446,8 @@ namespace Infiniminer
             if (!IsConnected)
                 return;
 
-            Send(ClientMessages.PlayerUpdate(playerPosition.ToNumerics(), playerCamera.GetLookVector().ToNumerics(),
-                playerTools[playerToolSelected], playerToolCooldown > 0.001f, positionEpoch));
+            Send(ClientMessages.PlayerUpdate(player.Position.ToNumerics(), playerCamera.GetLookVector().ToNumerics(),
+                player.Tools[player.ToolSelected], player.ToolCooldown > 0.001f, player.PositionEpoch));
         }
     }
 }

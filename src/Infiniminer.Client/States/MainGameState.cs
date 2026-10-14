@@ -36,7 +36,7 @@ namespace Infiniminer.States
         public override void OnEnter(Type oldState)
         {
             _SM.IsMouseVisible = false;
-            wasDead = _P.playerDead;
+            wasDead = _P.player.Dead;
             lastEffect = _P.screenEffect;
         }
 
@@ -66,11 +66,11 @@ namespace Infiniminer.States
             _P.particleEngine.Update(gameTime);
 
             // Count down the tool cooldown.
-            if (_P.playerToolCooldown > 0)
+            if (_P.player.ToolCooldown > 0)
             {
-                _P.playerToolCooldown -= (float)gameTime.ElapsedGameTime.TotalSeconds;
-                if (_P.playerToolCooldown <= 0)
-                    _P.playerToolCooldown = 0;
+                _P.player.ToolCooldown -= (float)gameTime.ElapsedGameTime.TotalSeconds;
+                if (_P.player.ToolCooldown <= 0)
+                    _P.player.ToolCooldown = 0;
             }
 
             // Moving the mouse changes where we look.
@@ -110,43 +110,43 @@ namespace Infiniminer.States
             // Digging like a freaking terrier! Now for everyone!
             bool digging = (mouseInitialized && mouseState.LeftButton == ButtonState.Pressed)
                 || (_SM.WindowHasFocus() && Pad.IsDown(Buttons.RightTrigger));
-            if (digging && !_P.playerDead && _P.playerToolCooldown == 0)
+            if (digging && !_P.player.Dead && _P.player.ToolCooldown == 0)
             {
-                if (_P.playerTools[_P.playerToolSelected] == PlayerTools.Pickaxe)
+                if (_P.player.SelectedTool == PlayerTools.Pickaxe)
                     _P.FirePickaxe();
-                else if (_P.playerTools[_P.playerToolSelected] == PlayerTools.Drill)
+                else if (_P.player.SelectedTool == PlayerTools.Drill)
                     _P.FireDrill();
             }
 
             // Prospector radar stuff.
-            if (!_P.playerDead && _P.playerToolCooldown == 0 && _P.playerTools[_P.playerToolSelected] == PlayerTools.ProspectingRadar)
+            if (!_P.player.Dead && _P.player.ToolCooldown == 0 && _P.player.SelectedTool == PlayerTools.ProspectingRadar)
             {
-                float oldValue = _P.radarValue;
-                _P.ReadRadar(ref _P.radarDistance, ref _P.radarValue);
-                if (_P.radarValue != oldValue)
+                float oldValue = _P.player.RadarValue;
+                _P.ReadRadar(ref _P.player.RadarDistance, ref _P.player.RadarValue);
+                if (_P.player.RadarValue != oldValue)
                 {
-                    if (_P.radarValue == 200)
+                    if (_P.player.RadarValue == 200)
                         _P.PlaySound(InfiniminerSound.RadarLow);
-                    if (_P.radarValue == 1000)
+                    if (_P.player.RadarValue == 1000)
                         _P.PlaySound(InfiniminerSound.RadarHigh);   
                 }
             }
 
             // Update the player"s position.
-            if (!_P.playerDead)
+            if (!_P.player.Dead)
                 UpdatePlayerPosition(gameTime, keyState);
             
             // Update the camera regardless of if we"re alive or not.
             _P.UpdateCamera(gameTime);
 
             // The controller rumbles for deaths, hard landings and nearby explosions.
-            if (_P.playerDead && !wasDead)
+            if (_P.player.Dead && !wasDead)
                 Rumble(0.8f, 0.5);
             else if (_P.screenEffect != lastEffect && _P.screenEffect == ScreenEffect.Explosion)
                 Rumble(0.6f, 0.6);
             else if (_P.screenEffect != lastEffect && _P.screenEffect == ScreenEffect.Fall)
                 Rumble(0.5f, 0.25);
-            wasDead = _P.playerDead;
+            wasDead = _P.player.Dead;
             lastEffect = _P.screenEffect;
 
             return nextState;
@@ -158,21 +158,21 @@ namespace Infiniminer.States
             bool movingOnRoad = false;
 
             // Apply "gravity".
-            _P.playerVelocity.Y += GRAVITY * (float)gameTime.ElapsedGameTime.TotalSeconds;
-            Vector3 footPosition = _P.playerPosition + new Vector3(0f, -1.5f, 0f);
-            Vector3 headPosition = _P.playerPosition + new Vector3(0f, 0.1f, 0f);
+            _P.player.Velocity.Y += GRAVITY * (float)gameTime.ElapsedGameTime.TotalSeconds;
+            Vector3 footPosition = _P.player.Position + new Vector3(0f, -1.5f, 0f);
+            Vector3 headPosition = _P.player.Position + new Vector3(0f, 0.1f, 0f);
             if (_P.blockEngine.SolidAtPointForPlayer(footPosition) || _P.blockEngine.SolidAtPointForPlayer(headPosition))
             {
                 BlockType standingOnBlock = _P.blockEngine.BlockAtPoint(footPosition);
                 BlockType hittingHeadOnBlock = _P.blockEngine.BlockAtPoint(headPosition);
                 
                 // If we"re hitting the ground with a high velocity, die!
-                if (standingOnBlock != BlockType.None && _P.playerVelocity.Y < 0)
+                if (standingOnBlock != BlockType.None && _P.player.Velocity.Y < 0)
                 {
-                    float fallDamage = Math.Abs(_P.playerVelocity.Y) / DIEVELOCITY;
+                    float fallDamage = Math.Abs(_P.player.Velocity.Y) / DIEVELOCITY;
                     if (fallDamage >= 1)
                     {
-                        _P.PlaySoundForEveryone(InfiniminerSound.GroundHit, _P.playerPosition);
+                        _P.PlaySoundForEveryone(InfiniminerSound.GroundHit, _P.player.Position);
                         _P.KillPlayer("WAS KILLED BY GRAVITY!");
                         return;
                     }
@@ -182,7 +182,7 @@ namespace Infiniminer.States
                         // Fall damage of 1.0 maps to a screenEffectCounter value of 0, making the effect very strong.
                         _P.screenEffect = ScreenEffect.Fall;
                         _P.screenEffectCounter = 2 - (fallDamage - 0.5) * 4;
-                        _P.PlaySoundForEveryone(InfiniminerSound.GroundHit, _P.playerPosition);
+                        _P.PlaySoundForEveryone(InfiniminerSound.GroundHit, _P.player.Position);
                     }
                 }
 
@@ -190,7 +190,7 @@ namespace Infiniminer.States
                 if (_P.blockEngine.SolidAtPointForPlayer(headPosition))
                 {
                     int blockIn = (int)(headPosition.Y);
-                    _P.playerPosition.Y = (float)(blockIn - 0.15f);
+                    _P.player.Position.Y = (float)(blockIn - 0.15f);
                 }
                 
                 // If the player is stuck in the ground, bring them out.
@@ -198,17 +198,17 @@ namespace Infiniminer.States
                 if (_P.blockEngine.SolidAtPointForPlayer(footPosition))
                 {
                     int blockOn = (int)(footPosition.Y);
-                    _P.playerPosition.Y = (float)(blockOn + 1 + 1.45);
+                    _P.player.Position.Y = (float)(blockOn + 1 + 1.45);
                 }
                 
-                _P.playerVelocity.Y = 0;
+                _P.player.Velocity.Y = 0;
 
                 // Logic for standing on a block.
                 switch (standingOnBlock)
                 {
                     case BlockType.Jump:
-                        _P.playerVelocity.Y = 2.5f * JUMPVELOCITY;
-                        _P.PlaySoundForEveryone(InfiniminerSound.Jumpblock, _P.playerPosition);
+                        _P.player.Velocity.Y = 2.5f * JUMPVELOCITY;
+                        _P.PlaySoundForEveryone(InfiniminerSound.Jumpblock, _P.player.Position);
                         break;
 
                     case BlockType.Road:
@@ -216,10 +216,10 @@ namespace Infiniminer.States
                         break;
 
                     //case BlockType.Teleporter:
-                    //    if (!_P.playerDead)
+                    //    if (!_P.player.Dead)
                     //    {
                     //        _P.Teleport();
-                    //        _P.PlaySoundForEveryone(InfiniminerSound.Teleporter, _P.playerPosition);
+                    //        _P.PlaySoundForEveryone(InfiniminerSound.Teleporter, _P.player.Position);
                     //    }
                     //    break;
 
@@ -244,10 +244,10 @@ namespace Infiniminer.States
                         return;
                 }
             }                
-            _P.playerPosition += _P.playerVelocity * (float)gameTime.ElapsedGameTime.TotalSeconds;
+            _P.player.Position += _P.player.Velocity * (float)gameTime.ElapsedGameTime.TotalSeconds;
 
             // Death by falling off the map.
-            if (_P.playerPosition.Y < -30)
+            if (_P.player.Position.Y < -30)
             {
                 _P.KillPlayer("WAS KILLED BY MISADVENTURE!");
                 return;
@@ -291,12 +291,12 @@ namespace Infiniminer.States
 
         private bool TryToMoveTo(Vector3 moveVector, GameTime gameTime)
         {
-            Vector3 target = _P.playerPosition + moveVector;
+            Vector3 target = _P.player.Position + moveVector;
             List<BlockType> obstacles = PlayerCollision.Obstacles(_P.blockEngine.BlockAtPoint,
-                block => !_P.blockEngine.SolidAtPointForPlayer(block), _P.playerPosition, target);
+                block => !_P.blockEngine.SolidAtPointForPlayer(block), _P.player.Position, target);
             if (obstacles.Count == 0)
             {
-                _P.playerPosition = target;
+                _P.player.Position = target;
                 return true;
             }
 
@@ -310,10 +310,10 @@ namespace Infiniminer.States
             // If it's a ladder, move up.
             if (obstacles.Contains(BlockType.Ladder))
             {
-                _P.playerVelocity.Y = CLIMBVELOCITY;
-                Vector3 footPosition = _P.playerPosition + new Vector3(0f, -1.5f, 0f);
+                _P.player.Velocity.Y = CLIMBVELOCITY;
+                Vector3 footPosition = _P.player.Position + new Vector3(0f, -1.5f, 0f);
                 if (_P.blockEngine.SolidAtPointForPlayer(footPosition))
-                    _P.playerPosition.Y += 0.1f;
+                    _P.player.Position.Y += 0.1f;
                 return true;
             }
 
@@ -367,7 +367,7 @@ namespace Infiniminer.States
             }
 
             // Pixelcide!
-            if (key == Keys.K && Keyboard.GetState().IsKeyDown(Keys.Escape) && !_P.playerDead)
+            if (key == Keys.K && Keyboard.GetState().IsKeyDown(Keys.Escape) && !_P.player.Dead)
             {
                 _P.KillPlayer("HAS COMMMITTED PIXELCIDE!");
             }
@@ -404,9 +404,9 @@ namespace Infiniminer.States
                 _P.chatMode = ChatMessageType.SayAll;
 
             if (key == Game.Settings.Key(GameAction.SayTeam))
-                _P.chatMode = _P.playerTeam == PlayerTeam.Red ? ChatMessageType.SayRedTeam : ChatMessageType.SayBlueTeam;
+                _P.chatMode = _P.player.Team == PlayerTeam.Red ? ChatMessageType.SayRedTeam : ChatMessageType.SayBlueTeam;
 
-            if (!_P.playerDead)
+            if (!_P.player.Dead)
             {
                 if (key == Game.Settings.Key(GameAction.Jump))
                     Jump();
@@ -422,7 +422,7 @@ namespace Infiniminer.States
                     Ping();
 
                 // Change class.
-                if (key == Game.Settings.Key(GameAction.ChangeClass) && _P.playerPosition.Y > _P.SurfaceHeight)
+                if (key == Game.Settings.Key(GameAction.ChangeClass) && _P.player.Position.Y > _P.SurfaceHeight)
                     nextState = typeof(ClassSelectionState);
 
                 // Change team.
@@ -433,27 +433,25 @@ namespace Infiniminer.States
 
         void Jump()
         {
-            Vector3 footPosition = _P.playerPosition + new Vector3(0f, -1.5f, 0f);
-            if (_P.blockEngine.SolidAtPointForPlayer(footPosition) && _P.playerVelocity.Y == 0)
+            Vector3 footPosition = _P.player.Position + new Vector3(0f, -1.5f, 0f);
+            if (_P.blockEngine.SolidAtPointForPlayer(footPosition) && _P.player.Velocity.Y == 0)
             {
-                _P.playerVelocity.Y = JUMPVELOCITY;
+                _P.player.Velocity.Y = JUMPVELOCITY;
                 float amountBelowSurface = ((ushort)footPosition.Y) + 1 - footPosition.Y;
-                _P.playerPosition.Y += amountBelowSurface + 0.01f;
+                _P.player.Position.Y += amountBelowSurface + 0.01f;
             }
         }
 
         void CycleTool(int direction)
         {
             _P.PlaySound(InfiniminerSound.ClickLow);
-            _P.playerToolSelected = (_P.playerToolSelected + direction + _P.playerTools.Length) % _P.playerTools.Length;
+            _P.player.CycleTool(direction);
         }
 
         void CycleBlock(int direction)
         {
-            if (_P.playerTools[_P.playerToolSelected] != PlayerTools.ConstructionGun)
-                return;
-            _P.PlaySound(InfiniminerSound.ClickLow);
-            _P.playerBlockSelected = (_P.playerBlockSelected + direction + _P.playerBlocks.Length) % _P.playerBlocks.Length;
+            if (_P.player.CycleBlock(direction))
+                _P.PlaySound(InfiniminerSound.ClickLow);
         }
 
         void DepositOre()
@@ -474,7 +472,7 @@ namespace Infiniminer.States
 
         void Ping()
         {
-            _P.Send(ClientMessages.Ping(_P.playerMyId));
+            _P.Send(ClientMessages.Ping(_P.player.Id));
         }
 
         void Rumble(float strength, double seconds)
@@ -495,7 +493,7 @@ namespace Infiniminer.States
                 return;
             }
 
-            if (_P.playerDead)
+            if (_P.player.Dead)
             {
                 if (button == Buttons.A || button == Buttons.RightTrigger)
                     TryRespawn();
@@ -535,7 +533,7 @@ namespace Infiniminer.States
 
         public override void OnMouseDown(MouseButton button, int x, int y)
         {
-            if (_P.playerDead)
+            if (_P.player.Dead)
                 TryRespawn();
             else
                 UseTool();
@@ -544,12 +542,12 @@ namespace Infiniminer.States
         // Fires the selected tool (the pickaxe and drill dig while the button is held; see OnUpdate).
         void UseTool()
         {
-            if (_P.playerToolCooldown != 0)
+            if (_P.player.ToolCooldown != 0)
                 return;
-            switch (_P.playerTools[_P.playerToolSelected])
+            switch (_P.player.SelectedTool)
             {
                 case PlayerTools.ConstructionGun:
-                    _P.FireConstructionGun(_P.playerBlocks[_P.playerBlockSelected]);
+                    _P.FireConstructionGun(_P.player.SelectedBlock);
                     break;
 
                 case PlayerTools.DeconstructionGun:
@@ -570,7 +568,7 @@ namespace Infiniminer.States
         // Come back to life once the death screen has had a moment.
         void TryRespawn()
         {
-            if (_P.playerDead && !_P.respawnPending && _P.screenEffectCounter > 2)
+            if (_P.player.Dead && !_P.player.RespawnPending && _P.screenEffectCounter > 2)
                 _P.RespawnPlayer();
         }
 
@@ -581,7 +579,7 @@ namespace Infiniminer.States
 
         public override void OnMouseScroll(int scrollDelta)
         {
-            if (_P.playerDead)
+            if (_P.player.Dead)
                 return;
             if (scrollDelta > 0)
                 CycleBlock(1);

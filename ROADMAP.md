@@ -64,7 +64,7 @@ The original server trusted almost everything the client said.
       tests' bot), server message handling (`ServerMessageHandler`), `ChatLog`, `Radar`, `SoundPlayer`, and dig
       rules shared by the server and the client's prediction (`GameRules.Dig`)
 - [x] Client tests: radar, chat, sound panning, dig rules, wire format, state construction
-- [ ] Later: move the local player's fields out of `PropertyBag` into their own class
+- [x] Moved the local player's fields out of `PropertyBag` (see section 9)
 
 ## 9. Next
 - [x] Controller support: analog movement and look, hold RT to dig, rumble, every menu navigable with the
@@ -74,5 +74,5 @@ The original server trusted almost everything the client said.
       players, time limit, lava, home bases, sandbox), LAN players find it as usual, END GAME stops it
 - [x] Recent servers in the server list (the last five joined), and rejoining automatically when a server
       restarts with a new map after a match
-- [ ] Move the local player's fields out of `PropertyBag` into their own class
+- [x] The local player's state and rules (equipment cycling, class and team changes) live in `LocalPlayer`
 - [ ] Linux AppImage

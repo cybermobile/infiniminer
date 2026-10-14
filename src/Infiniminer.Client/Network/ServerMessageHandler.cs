@@ -95,8 +95,8 @@ namespace Infiniminer
 
                 case InfiniminerMessage.TriggerConstructionGunAnimation:
                     {
-                        _P.constructionGunAnimation = msgBuffer.GetFloat();
-                        if (_P.constructionGunAnimation <= -0.1)
+                        _P.player.ConstructionGunAnimation = msgBuffer.GetFloat();
+                        if (_P.player.ConstructionGunAnimation <= -0.1)
                         {
                             _P.PlaySound(InfiniminerSound.RadarSwitch);
                             _P.blockPredictor.OnBuildFailed();
@@ -107,11 +107,11 @@ namespace Infiniminer
                 case InfiniminerMessage.ResourceUpdate:
                     {
                         // ore, cash, weight, max ore, max weight, team ore, red cash, blue cash, all uint
-                        _P.playerOre = msgBuffer.GetUInt();
-                        _P.playerCash = msgBuffer.GetUInt();
-                        _P.playerWeight = msgBuffer.GetUInt();
-                        _P.playerOreMax = msgBuffer.GetUInt();
-                        _P.playerWeightMax = msgBuffer.GetUInt();
+                        _P.player.Ore = msgBuffer.GetUInt();
+                        _P.player.Cash = msgBuffer.GetUInt();
+                        _P.player.Weight = msgBuffer.GetUInt();
+                        _P.player.OreMax = msgBuffer.GetUInt();
+                        _P.player.WeightMax = msgBuffer.GetUInt();
                         _P.teamOre = msgBuffer.GetUInt();
                         _P.teamRedCash = msgBuffer.GetUInt();
                         _P.teamBlueCash = msgBuffer.GetUInt();
@@ -154,7 +154,7 @@ namespace Infiniminer
                         _P.particleEngine.CreateExplosionDebris(blockPos);
 
                         // Figure out what the effect is.
-                        float distFromExplosive = (blockPos + 0.5f * Vector3.One - _P.playerPosition).Length();
+                        float distFromExplosive = (blockPos + 0.5f * Vector3.One - _P.player.Position).Length();
                         if (distFromExplosive < 3)
                             _P.KillPlayer("WAS KILLED IN AN EXPLOSION!");
                         else if (distFromExplosive < 8)
@@ -180,12 +180,8 @@ namespace Infiniminer
                             player.Team = (PlayerTeam)msgBuffer.GetByte();
 
                             // The server can put us on the other team (auto-balance).
-                            if (playerId == _P.playerMyId && player.Team != PlayerTeam.None && player.Team != _P.playerTeam)
-                            {
-                                _P.playerTeam = player.Team;
-                                _P.playerBlocks = GameRules.GetBlocks(_P.playerClass, player.Team);
-                                _P.playerBlockSelected = 0;
-                            }
+                            if (playerId == _P.player.Id && player.Team != PlayerTeam.None && player.Team != _P.player.Team)
+                                _P.player.SetTeam(player.Team);
                         }
                     }
                     break;
@@ -201,7 +197,7 @@ namespace Infiniminer
                         _P.playerList[playerId].ID = playerId;
                         _P.playerList[playerId].Alive = playerAlive;
                         if (thisIsMe)
-                            _P.playerMyId = playerId;
+                            _P.player.Id = playerId;
                     }
                     break;
 
@@ -220,10 +216,10 @@ namespace Infiniminer
                         {
                             Player player = _P.playerList[playerId];
                             player.Alive = false;
-                            if (playerId == _P.playerMyId)
+                            if (playerId == _P.player.Id)
                                 _P.EnterDeathState();
                             _P.particleEngine.CreateBloodSplatter(player.Position, player.Team == PlayerTeam.Red ? Color.Red : Color.Blue);
-                            if (playerId != _P.playerMyId)
+                            if (playerId != _P.player.Id)
                                 _P.PlaySound(InfiniminerSound.Death, player.Position);
                         }
                     }
@@ -236,7 +232,7 @@ namespace Infiniminer
                         {
                             Player player = _P.playerList[playerId];
                             player.Alive = true;
-                            if (playerId == _P.playerMyId)
+                            if (playerId == _P.player.Id)
                                 _P.OnRespawned();
                         }
                     }
@@ -286,7 +282,7 @@ namespace Infiniminer
                         uint playerId = msgBuffer.GetUInt();
                         if (_P.playerList.ContainsKey(playerId))
                         {
-                            if (_P.playerList[playerId].Team == _P.playerTeam)
+                            if (_P.playerList[playerId].Team == _P.player.Team)
                             {
                                 _P.playerList[playerId].Ping = 1;
                                 _P.PlaySound(InfiniminerSound.Ping);
@@ -324,7 +320,7 @@ namespace Infiniminer
         {
             // Copied from TryToMoveTo; responsible for checking if lava has flowed over us.
 
-            Vector3 movePosition = _P.playerPosition;
+            Vector3 movePosition = _P.player.Position;
             Vector3 midBodyPoint = movePosition + new Vector3(0, -0.7f, 0);
             Vector3 lowerBodyPoint = movePosition + new Vector3(0, -1.4f, 0);
             BlockType lowerBlock = _P.blockEngine.BlockAtPoint(lowerBodyPoint);

@@ -235,7 +235,7 @@ namespace Infiniminer
             StatusMessage = "";
 
             // Create our connect message.
-            NetDataWriter connectBuffer = ClientMessages.ConnectRequest(propertyBag.playerHandle);
+            NetDataWriter connectBuffer = ClientMessages.ConnectRequest(propertyBag.player.Handle);
 
             // Connect to the server.
             CurrentServer = serverEndPoint;
@@ -428,7 +428,7 @@ namespace Infiniminer
 
             propertyBag = new Infiniminer.PropertyBag(this);
             messageHandler ??= new ServerMessageHandler(this);
-            propertyBag.playerHandle = Settings.Handle;
+            propertyBag.player.Handle = Settings.Handle;
             propertyBag.sounds.Volume = Settings.Volume;
             propertyBag.netListener.PeerDisconnectedEvent += OnPeerDisconnected;
             propertyBag.netListener.NetworkReceiveEvent += OnNetworkReceive;

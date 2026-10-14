@@ -33,7 +33,7 @@ namespace Infiniminer.States
             drawRect = new Rectangle(0, 0, 1024, 1024);
 
             _P.KillPlayer("");
-            highlighted = Math.Max(0, Array.IndexOf(MenuOrder, _P.playerClass));
+            highlighted = Math.Max(0, Array.IndexOf(MenuOrder, _P.player.Class));
             showHighlight = _SM.UsingGamePad;
         }
 
@@ -64,7 +64,7 @@ namespace Infiniminer.States
         {
             SpriteBatch spriteBatch = _SM.SpriteBatch;
             spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, Game.MenuSampler, null, null, null, Game.MenuTransform);
-            spriteBatch.Draw((_P.playerTeam == PlayerTeam.Red)?texMenuRed:texMenuBlue, drawRect, Color.White);
+            spriteBatch.Draw((_P.player.Team == PlayerTeam.Red)?texMenuRed:texMenuBlue, drawRect, Color.White);
             if (showHighlight)
             {
                 Rectangle area = clkClassMenu[highlighted].Rectangle;

@@ -34,7 +34,7 @@ namespace Infiniminer.States
 
             if (oldState == typeof(MainGameState) || oldState == typeof(GameMenuState))
                 canCancel = true;
-            highlighted = _P.playerTeam == PlayerTeam.Blue ? 1 : 0;
+            highlighted = _P.player.Team == PlayerTeam.Blue ? 1 : 0;
             showHighlight = _SM.UsingGamePad;
         }
 
@@ -99,7 +99,7 @@ namespace Infiniminer.States
 
         void ChooseTeam(PlayerTeam team)
         {
-            if (_P.playerTeam == team && canCancel)
+            if (_P.player.Team == team && canCancel)
                 nextState = typeof(MainGameState);
             else
             {
