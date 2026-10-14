@@ -60,6 +60,7 @@ namespace Infiniminer
         public bool HostSandbox = false;
         public int HostBots = 2;            // computer players
         public BotSkill HostBotSkill = BotSkill.Normal;
+        public GameMode HostGameMode = GameMode.Cash;
         public bool HostInternet = false;   // forward the port on the router (UPnP)
         public bool HostKeepWorld = true;   // save the world when the game ends, to continue it next time
         public Dictionary<GameAction, Keys> KeyBindings = DefaultKeyBindings();
@@ -138,6 +139,7 @@ namespace Infiniminer
                 AutoBalance = true,
                 Bots = HostBots,
                 BotSkill = HostBotSkill,
+                Mode = HostGameMode,
                 Upnp = HostInternet,
                 Persist = HostKeepWorld,
                 ArchiveMatches = false,     // no pile of old maps in the player's settings folder
@@ -210,6 +212,8 @@ namespace Infiniminer
             settings.HostBots = Math.Clamp(dataFile.GetInt("host_bots", settings.HostBots), 0, 16);
             if (Enum.TryParse(dataFile.GetString("host_botskill", ""), true, out BotSkill skill) && Enum.IsDefined(skill))
                 settings.HostBotSkill = skill;
+            if (Enum.TryParse(dataFile.GetString("host_gamemode", ""), true, out GameMode mode) && Enum.IsDefined(mode))
+                settings.HostGameMode = mode;
             settings.HostInternet = dataFile.GetBool("host_internet", settings.HostInternet);
             settings.HostKeepWorld = dataFile.GetBool("host_keepworld", settings.HostKeepWorld);
             foreach (GameAction action in Enum.GetValues<GameAction>())
@@ -276,6 +280,7 @@ namespace Infiniminer
             Line("host_sandbox = " + Bool(HostSandbox));
             Line("host_bots = " + HostBots.ToString(CultureInfo.InvariantCulture));
             Line("host_botskill = " + HostBotSkill.ToString().ToLowerInvariant());
+            Line("host_gamemode = " + HostGameMode.ToString().ToLowerInvariant());
             Line("host_internet = " + Bool(HostInternet));
             Line("host_keepworld = " + Bool(HostKeepWorld));
             Line();

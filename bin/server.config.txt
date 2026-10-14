@@ -15,6 +15,10 @@ serverlist =
 # This value specifies the amount of cash required for a team to win the game.
 winningcash = 10000
 
+# cash: the original game, a race to bank treasure. hill: king of the hill, as well as banking treasure. A metal
+# platform in the middle of the map (with ramps up to it) earns $25 a second for the team with more players on it.
+gamemode = cash
+
 # This flag specifies whether or not generated levels will include lava.
 includelava = true
 

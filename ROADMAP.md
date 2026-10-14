@@ -109,3 +109,5 @@ The original server trusted almost everything the client said.
 - [x] Bots that defend and attack: engineers fence the bank in with force fields (two high, so it can't be
       jumped) and then a rail of shock blocks above it (no room to climb over), and sappers raid the enemy
       bank and blast through its fence
+- [x] King of the hill (`gamemode = hill`, GAME MODE in HOST GAME): a platform in the middle of the map earns
+      the team holding it $25 a second; bots go and hold it, and find their way round if they get stuck

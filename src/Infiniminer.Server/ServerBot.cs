@@ -16,6 +16,7 @@ namespace Infiniminer
         void Moved(ServerPlayer bot);                   // tell everyone where the bot is
         void Respawn(ServerPlayer bot);
         void Kill(ServerPlayer bot, string deathMessage);
+        (int x, int y, int z)? Hill { get; }            // king of the hill: the platform's middle block, if there is one
     }
 
     // How well computer players play. Even hard bots stay within what a person can do: they dig no faster than
@@ -30,6 +31,7 @@ namespace Infiniminer
     //               fences it in with the team's force fields (which only the team can walk through) topped
     //               with a rail of shock blocks, and deposits the rest of its ore there
     //   Sapper      blasts through rock that a pickaxe can't dig, and raids the enemy bank to blow up its defences
+    // In king of the hill, bots back on the surface (or just respawned) often go and hold the hill for a while.
     // It moves one block at a time, digging what is in the way, keeps away from lava (and flees lava that flows
     // towards it), and heads home early when carrying diamonds.
     public sealed class ServerBot
@@ -42,6 +44,7 @@ namespace Infiniminer
         const int BlastDistance = 4;    // explosions kill within 3 blocks
         const float RaidLimit = 90;     // seconds a sapper spends on a raid
         const int BuildReach = 5;       // blocks; as far as the construction gun reaches
+        const float HillTripLimit = 90; // seconds to spend getting onto the hill before giving up
 
         public readonly ServerPlayer Player;
         readonly IBotWorld world;
@@ -49,7 +52,7 @@ namespace Infiniminer
         public BotSkill Skill = BotSkill.Normal;
         float idleTime;                 // easy bots stop for a breather now and then
 
-        enum Plan { Wander, Descend, Tunnel, Ascend, ToBank, Blast, Raid }
+        enum Plan { Wander, Descend, Tunnel, Ascend, ToBank, Blast, Raid, Hold }
         Plan plan = Plan.Wander;
         int x, fy, z;                   // the block the bot's feet are in
         int dirX = 1, dirZ = 0;
@@ -62,6 +65,10 @@ namespace Infiniminer
         (int x, int y, int z)? pendingLadder;   // engineers climbing: the ladder goes under their feet
         int blastStage, retreatLeft;
         Plan afterBlast = Plan.Tunnel;
+        float holdLeft;                     // seconds left to stay on the hill once there
+        int holdBest;                       // getting to the hill: the closest it has been (distance plus height)
+        bool directToHill;                  // head straight for it instead of lining up with a ramp first
+        int digDownTo = -1;                 // stuck up high (on a mesa with cliffs all round): dig down to here
         int defenceBudget = -1;             // ore an engineer at the bank may spend on defences (-1: not decided yet)
         int ascendBestY, relocateSteps;     // climbing: highest point so far, and steps left to walk elsewhere
         float ascendStall;
@@ -78,6 +85,7 @@ namespace Infiniminer
         public int DefencesBuilt { get; private set; }
         public int Raids { get; private set; }
         public int RaidsThrough { get; private set; }     // raids that got through to the enemy bank
+        public float SecondsOnHill { get; private set; }
 
         // Tests: start tunnelling in a direction from where the bot stands.
         internal void StartTunnel(int dx, int dz)
@@ -110,6 +118,23 @@ namespace Infiniminer
             get { return plan == Plan.Raid || (plan == Plan.Blast && afterBlast == Plan.Raid); }
         }
 
+        internal bool HoldingHill
+        {
+            get { return plan == Plan.Hold; }
+        }
+
+        internal void GoToHill()
+        {
+            SyncFromPosition();
+            StartHold();
+        }
+
+        void StartHold()
+        {
+            SetPlan(Plan.Hold);
+            holdLeft = 20 + random.Next(20);
+        }
+
         internal void StartRaid()
         {
             SyncFromPosition();
@@ -120,7 +145,9 @@ namespace Infiniminer
         public string Describe()
         {
             return $"{plan} at ({x},{fy},{z}) ore {Player.Ore} weight {Player.Weight} cash {Player.Cash} alive {Player.Alive} stuck {stuckTime:0.0}"
-                + (DefencesBuilt > 0 ? $" defences {DefencesBuilt}" : "") + (Raids > 0 ? $" raids {RaidsThrough}/{Raids}" : "");
+                + (DefencesBuilt > 0 ? $" defences {DefencesBuilt}" : "") + (Raids > 0 ? $" raids {RaidsThrough}/{Raids}" : "")
+                + (Class == PlayerClass.Engineer && world.FindBank(Player.Team) is (int, int, int) bank ? $" bank {bank}" : "")
+                + (SecondsOnHill > 0 ? $" hill {SecondsOnHill:0}s" : "");
         }
 
         public ServerBot(ServerPlayer player, IBotWorld world, int seed)
@@ -361,6 +388,8 @@ namespace Infiniminer
                     SetPlan(Plan.Wander);
                     stepsLeft = 3 + random.Next(6);
                     TurnRandomly();
+                    if (world.Hill != null && random.Next(3) == 0)
+                        StartHold();
                     world.Moved(Player);
                 }
                 return;
@@ -419,6 +448,8 @@ namespace Infiniminer
             ascendStall = 0;
             relocateSteps = 0;
             defenceBudget = -1;
+            holdBest = int.MaxValue;
+            digDownTo = -1;
         }
 
         // Turns towards the middle of the map, along whichever axis is further off.
@@ -482,8 +513,8 @@ namespace Infiniminer
                 return;
             }
 
-            // Anything wanted right next to us is always worth a swing.
-            if (plan != Plan.Blast)
+            // Anything wanted right next to us is always worth a swing (unless busy blasting or taking the hill).
+            if (plan != Plan.Blast && plan != Plan.Hold)
                 foreach (var (tx, ty, tz) in new[] { (x + 1, fy, z), (x - 1, fy, z), (x, fy, z + 1), (x, fy, z - 1),
                                                      (x + 1, fy + 1, z), (x - 1, fy + 1, z), (x, fy + 1, z + 1), (x, fy + 1, z - 1),
                                                      (x, fy + 2, z), (x, fy - 1, z) })
@@ -553,6 +584,8 @@ namespace Infiniminer
                             SetPlan(Plan.Raid);
                             Raids++;
                         }
+                        else if (world.Hill != null && random.Next(2) == 0)
+                            StartHold();
                         else
                         {
                             SetPlan(Plan.Wander);
@@ -611,6 +644,10 @@ namespace Infiniminer
 
                 case Plan.Raid:
                     Raid();
+                    return;
+
+                case Plan.Hold:
+                    HoldHill(elapsed);
                     return;
             }
         }
@@ -812,6 +849,22 @@ namespace Infiniminer
             return false;
         }
 
+        // One step towards a block, keeping to the surface: walking (or stepping up) if it can, otherwise cutting
+        // steps up the way it's going, and only then digging straight through. Returns false if all of that fails.
+        bool WalkOverground(int tx, int tz)
+        {
+            var towards = DirectionsTowards(tx, tz);
+            foreach (var (dx, dz) in towards)
+            {
+                (dirX, dirZ) = (dx, dz);
+                if (Step(climb: true, dig: false))
+                    return true;
+            }
+            if (towards.Length > 0)
+                (dirX, dirZ) = towards[0];
+            return Climb();
+        }
+
         // Engineers at the bank: puts one of the team's force fields in the next empty spot of the fence round it,
         // and once that is finished, a shock block in the rail above it; within reach and not where it is standing.
         // Returns false when there is nothing more to build here (or no budget left for it).
@@ -838,6 +891,113 @@ namespace Infiniminer
                 }
             }
             return false;
+        }
+
+        // King of the hill: walk to the platform (cutting steps up to it if it is above us) and stay on it a while,
+        // shuffling about, then go back to mining.
+        void HoldHill(float elapsed)
+        {
+            if (world.Hill is not (int hx, int hy, int hz) || holdLeft <= 0 || planTime > HillTripLimit + holdLeft)
+            {
+                SetPlan(Plan.Wander);
+                stepsLeft = 6 + random.Next(6);
+                FaceCentre();
+                (dirX, dirZ) = (-dirX, -dirZ);      // away from the middle, off the platform
+                if (dirX == 0 && dirZ == 0)
+                    TurnRandomly();
+                return;
+            }
+            int distance = Math.Max(Math.Abs(x - hx), Math.Abs(z - hz));
+            if (distance <= 2 && fy > hy && fy <= hy + 3)
+            {
+                // On the hill: holding it is the job, so this isn't being stuck.
+                holdLeft -= elapsed;
+                SecondsOnHill += elapsed;
+                stuckTime = 0;
+                if (actionCooldown <= 0)
+                {
+                    actionCooldown = 1 + (float)random.NextDouble() * 2;
+                    TurnRandomly();
+                    int nx = x + dirX, nz = z + dirZ;
+                    if (Math.Max(Math.Abs(nx - hx), Math.Abs(nz - hz)) <= 2)
+                        Step(climb: false, dig: false);
+                }
+                return;
+            }
+            // No closer for a while (going round in circles on rough ground): walk off a few steps somewhere else
+            // and try again from there.
+            int progress = distance + Math.Abs(hy + 1 - fy);
+            if (progress < holdBest)
+            {
+                holdBest = progress;
+                ascendStall = 0;
+            }
+            else
+                ascendStall += elapsed;
+            if (ascendStall > 6 && relocateSteps == 0)
+            {
+                relocateSteps = 3 + random.Next(4);
+                ascendStall = 0;
+                holdBest = int.MaxValue;
+                directToHill = !directToHill;       // and try the other way of getting there
+                TurnRandomly();
+                // Higher than the hill and getting nowhere: there may be no way down but digging.
+                if (fy > hy + 1)
+                    digDownTo = Math.Max(hy + 1, fy - 6);
+            }
+            if (digDownTo >= 0)
+            {
+                if (fy > digDownTo && Diggable(x, fy - 1, z))
+                {
+                    TryDig(x, fy - 1, z);
+                    return;
+                }
+                digDownTo = -1;
+            }
+            if (relocateSteps > 0)
+            {
+                // Any way that's open (or can be dug), the chosen one first.
+                bool stepped = false;
+                foreach (var (ddx, ddz) in new[] { (dirX, dirZ) }.Concat(Directions.OrderBy(_ => random.Next())))
+                {
+                    (dirX, dirZ) = (ddx, ddz);
+                    if (Step(climb: true, dig: true) || Climb())
+                    {
+                        stepped = true;
+                        break;
+                    }
+                }
+                if (!stepped)
+                    relocateSteps = 0;
+                else if (moving)
+                    relocateSteps--;
+                return;
+            }
+
+            // Close to it, line up with one of the ramps up to it (they run out from the middle of each side), then
+            // walk up; from further away, just head for it.
+            int dx = hx - x, dz = hz - z;
+            const int level = InfiniminerServer.HillRadius + 2;
+            (int tx, int tz) = (hx, hz);
+            bool near = distance <= level + InfiniminerServer.HillRampLength;
+            if (near && !directToHill && Math.Min(Math.Abs(dx), Math.Abs(dz)) > 1)
+                (tx, tz) = Math.Abs(dx) >= Math.Abs(dz) ? (x, hz) : (hx, z);
+
+            // Underground near it (in a cave under a ramp, or under the platform): cut steps up to the surface, in
+            // towards it, or out from under the platform's metal.
+            if (near && fy <= hy + InfiniminerServer.HillRampLength && (Solid(x, fy + 2, z) || Solid(x, fy + 3, z)))
+            {
+                var towards = DirectionsTowards(tx, tz);
+                (dirX, dirZ) = towards.Length > 0 ? towards[0] : (dirX, dirZ);
+                if (distance <= level)
+                    (dirX, dirZ) = DirectionsTowards(hx, hz).Select(d => (-d.dx, -d.dz)).FirstOrDefault((dirX, dirZ));
+                if (Climb())
+                    return;
+            }
+            if (WalkOverground(tx, tz))
+                return;
+            TurnRandomly();
+            Step(climb: true, dig: true);
         }
 
         // Sappers back on the surface with an explosive to spare sometimes go after the enemy's defences.

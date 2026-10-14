@@ -113,6 +113,12 @@ namespace Infiniminer.States
                 },
                 new Row
                 {
+                    Label = "GAME MODE",
+                    Value = () => Settings.HostGameMode == GameMode.Hill ? "KING OF THE HILL" : "CASH RACE",
+                    Change = direction => { Settings.HostGameMode = (GameMode)Cycle((int)Settings.HostGameMode, direction, 2); Changed(); },
+                },
+                new Row
+                {
                     Label = "MAX PLAYERS",
                     Value = () => Settings.HostMaxPlayers.ToString(),
                     Change = direction => { Settings.HostMaxPlayers = Math.Clamp(Settings.HostMaxPlayers + 2 * direction, 2, 32); Changed(); },

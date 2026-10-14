@@ -111,6 +111,8 @@ namespace Infiniminer
                 extraInfo += "sandbox";
             else
                 extraInfo += string.Format(CultureInfo.InvariantCulture, "{0:#.##k}", config.WinningCashAmount / 1000);
+            if (config.Mode == GameMode.Hill)
+                extraInfo += ", hill";
             if (!config.IncludeLava)
                 extraInfo += ", !lava";
             if (bots.Count > 0)
@@ -580,6 +582,7 @@ namespace Infiniminer
                                 lavaBlockCount++;
                                 break;
                         }
+            LocateHill();
         }
 
         readonly Dictionary<PlayerTeam, List<(int x, int y, int z)>> teleporters = new Dictionary<PlayerTeam, List<(int x, int y, int z)>>
@@ -677,6 +680,151 @@ namespace Infiniminer
                 AddHomeBase(MAPSIZE - 6, MAPSIZE - 6, PlayerTeam.Red);
                 AddHomeBase(5, 5, PlayerTeam.Blue);
             }
+            LocateHill();
+        }
+
+        // King of the hill: a metal platform in the middle of the map. Every second, the team with more living
+        // players on it earns HillCashPerSecond.
+        public const uint HillCashPerSecond = 25;
+        public const int HillRadius = 3;        // the platform is 7 x 7 blocks
+        (int x, int y, int z)? hill;            // the platform's middle block; players stand on top of it
+        PlayerTeam hillHolder = PlayerTeam.None;
+        float hillClock;
+
+        public (int x, int y, int z)? Hill
+        {
+            get { return hill; }
+        }
+
+        // Finds the platform in a loaded or continued world (or builds one if it has none).
+        void LocateHill()
+        {
+            hill = null;
+            if (config.Mode != GameMode.Hill)
+                return;
+            int c = MAPSIZE / 2;
+            for (int y = MAPSIZE - 2; y > 0; y--)
+                if (blockList[c, y, c] == BlockType.Metal)
+                {
+                    hill = (c, y, c);
+                    break;
+                }
+            if (hill == null)
+                AddHill();
+            ConsoleWrite("KING OF THE HILL: THE HILL IS AT " + hill.Value.x + "," + (hill.Value.y + 1) + "," + hill.Value.z);
+        }
+
+        public const int HillRampLength = 12;     // at least; ramps carry on until they meet the ground
+
+        int TopBlock(int x, int z)
+        {
+            int y = MAPSIZE - 2;
+            while (y > 1 && blockList[x, y, z] == BlockType.None)
+                y--;
+            return y;
+        }
+
+        // Levels the ground round the middle of the map and puts the platform on it, with a ramp three blocks wide
+        // down (or up) to the ground on each side, so anyone can walk onto it.
+        void AddHill()
+        {
+            int c = MAPSIZE / 2;
+            int surface = MAPSIZE - 1 - GameConstants.GroundLevel;
+            int y0 = Math.Clamp(TopBlock(c, c), surface - 1, MAPSIZE - 6);
+            const int level = HillRadius + 2;
+            foreach (var (sx, sz) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+            {
+                int height = y0;
+                for (int k = 1; ; k++)
+                {
+                    int mx = c + sx * (level + k), mz = c + sz * (level + k);
+                    if (mx < 2 || mz < 2 || mx > MAPSIZE - 3 || mz > MAPSIZE - 3)
+                        break;
+                    // One block up or down from the last step, towards the ground, until it meets it (at least
+                    // HillRampLength long, so it's easy to find).
+                    int ground = TopBlock(mx, mz);
+                    if (k > HillRampLength && ground == height)
+                        break;
+                    height = Math.Clamp(ground, height - 1, height + 1);
+                    for (int w = -1; w <= 1; w++)
+                        BuildColumn(mx + Math.Abs(sz) * w, mz + Math.Abs(sx) * w, height, null);
+                }
+            }
+            for (int x = c - level; x <= c + level; x++)
+                for (int z = c - level; z <= c + level; z++)
+                    BuildColumn(x, z, y0, Math.Abs(x - c) <= HillRadius && Math.Abs(z - c) <= HillRadius ? BlockType.Metal : BlockType.Dirt);
+            hill = (c, y0, c);
+        }
+
+        // Makes a column of the hill or its ramps: open sky above `top`, `topBlock` (or what's there, if solid) at
+        // `top`, and solid ground under it all the way down, with no caves or lava to fall into.
+        void BuildColumn(int x, int z, int top, BlockType? topBlock)
+        {
+            for (int y = MAPSIZE - 1; y > top; y--)
+                SetHillBlock(x, y, z, BlockType.None);
+            BlockType existing = blockList[x, top, z];
+            SetHillBlock(x, top, z, topBlock ?? (existing == BlockType.None || existing == BlockType.Lava ? BlockType.Dirt : existing));
+            for (int y = top - 1; y > 0; y--)
+            {
+                BlockType block = blockList[x, y, z];
+                if (block != BlockType.None && block != BlockType.Lava)
+                {
+                    if (y < top - 3)
+                        break;      // solid ground
+                    continue;
+                }
+                SetHillBlock(x, y, z, BlockType.Dirt);
+            }
+        }
+
+        void SetHillBlock(int x, int y, int z, BlockType block)
+        {
+            blockList[x, y, z] = block;
+            blockCreatorTeam[x, y, z] = PlayerTeam.None;
+        }
+
+        public bool OnHill(ServerPlayer player)
+        {
+            if (hill is not (int hx, int hy, int hz) || !player.Alive || player.Team == PlayerTeam.None)
+                return false;
+            int x = (int)MathF.Floor(player.Position.X), z = (int)MathF.Floor(player.Position.Z);
+            int feet = (int)MathF.Floor(player.Position.Y + GameRules.FootOffset + 0.05f);
+            return Math.Abs(x - hx) <= HillRadius && Math.Abs(z - hz) <= HillRadius && feet > hy && feet <= hy + 3;
+        }
+
+        public void UpdateHill(float elapsed)
+        {
+            if (hill == null || config.SandboxMode || winningTeam != PlayerTeam.None)
+                return;
+            hillClock += elapsed;
+            while (hillClock >= 1)
+            {
+                hillClock -= 1;
+                int red = playerList.Values.Count(p => p.Team == PlayerTeam.Red && OnHill(p));
+                int blue = playerList.Values.Count(p => p.Team == PlayerTeam.Blue && OnHill(p));
+                PlayerTeam holder = red > blue ? PlayerTeam.Red : blue > red ? PlayerTeam.Blue : PlayerTeam.None;
+                if (holder != hillHolder)
+                {
+                    if (holder != PlayerTeam.None)
+                        SendServerMessage("SERVER: THE " + GetTeamName(holder) + " TEAM HAS TAKEN THE HILL!");
+                    else if (red > 0)
+                        SendServerMessage("SERVER: THE HILL IS CONTESTED!");
+                    hillHolder = holder;
+                }
+                if (holder == PlayerTeam.None)
+                    continue;
+                if (holder == PlayerTeam.Red)
+                    teamCashRed += HillCashPerSecond;
+                else
+                    teamCashBlue += HillCashPerSecond;
+                foreach (ServerPlayer p in playerList.Values)
+                    SendResourceUpdate(p);
+            }
+        }
+
+        public uint TeamCash(PlayerTeam team)
+        {
+            return team == PlayerTeam.Red ? teamCashRed : team == PlayerTeam.Blue ? teamCashBlue : 0;
         }
 
         // Loads world.sav if it fits this server. Returns false (and the server makes a new world) otherwise.
@@ -848,7 +996,9 @@ namespace Infiniminer
 
             // Computer players.
             DateTime botTime = DateTime.Now;
-            UpdateBots((float)Math.Min(0.25, (botTime - lastBotUpdate).TotalSeconds));
+            float elapsed = (float)Math.Min(0.25, (botTime - lastBotUpdate).TotalSeconds);
+            UpdateBots(elapsed);
+            UpdateHill(elapsed);
             lastBotUpdate = botTime;
 
             // Lava, shock blocks and the void are lethal whether or not the client admits it.
@@ -1542,6 +1692,11 @@ namespace Infiniminer
                         if (blockList[x, y, z] == ownBank)
                             return (x, y, z);
             return null;
+        }
+
+        (int x, int y, int z)? IBotWorld.Hill
+        {
+            get { return hill; }
         }
 
         void IBotWorld.Kill(ServerPlayer bot, string deathMessage)

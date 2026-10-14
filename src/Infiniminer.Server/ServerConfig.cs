@@ -17,13 +17,14 @@ namespace Infiniminer
         public bool AutoBalance = false;    // players can't join a team that already has more players
         public int MapSize = GameConstants.MapSize;  // 64 (original), 96 or 128
         public int DebugLatency = 0;        // milliseconds of simulated latency, for testing
-        public string AdminPassword = "";
-        public int Bots = 0;
+        public string AdminPassword = "";   // lets players run console commands from chat after /login
+        public int Bots = 0;                // computer players (they make way for people when the server is full)
         public BotSkill BotSkill = BotSkill.Normal;
-        public bool Upnp = false;
+        public bool Upnp = false;           // ask the router to forward the port (UPnP), for players on the internet
         public int Seed = 0;                // 0: a different world every time; otherwise the same world for the same seed
         public bool Persist = false;        // keep the world (and the match standing) in world.sav between runs
-        public bool ArchiveMatches = true;  // write each finished match's map to autosave_<time>.lvl           // ask the router to forward the port (UPnP), for players on the internet                // computer players (they make way for people when the server is full)   // lets players run console commands from chat after /login
+        public bool ArchiveMatches = true;  // write each finished match's map to autosave_<time>.lvl
+        public GameMode Mode = GameMode.Cash;
 
         // The original public server list (apps.keithholman.net) no longer exists, so listing is opt-in
         // through this setting. The endpoint receives the same form POST the original server sent.
@@ -54,6 +55,8 @@ namespace Infiniminer
             config.Seed = dataFile.GetInt("seed", config.Seed);
             if (Enum.TryParse(dataFile.GetString("botskill", ""), true, out BotSkill skill) && Enum.IsDefined(skill))
                 config.BotSkill = skill;
+            if (Enum.TryParse(dataFile.GetString("gamemode", ""), true, out GameMode mode) && Enum.IsDefined(mode))
+                config.Mode = mode;
             int mapSize = dataFile.GetInt("mapsize", config.MapSize);
             config.MapSize = GameConstants.MapSizes.Contains(mapSize) ? mapSize : GameConstants.MapSize;
             config.ServerListUrl = dataFile.GetString("serverlist", config.ServerListUrl);

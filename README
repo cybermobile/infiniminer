@@ -136,6 +136,10 @@ Other new settings:
   homebases   (server) give each team a home base to spawn at (default false).
   shocktouch  (server) shock blocks kill on any touch, not just from below (default false).
   timelimit   (server) match length in minutes; the richer team wins, ties go to overtime (default 0, off).
+  gamemode    (server) "cash" (the original race to bank treasure, the default) or "hill": king of the hill.
+              A metal platform in the middle of the map, with ramps up to it, earns $25 a second for the
+              team with more players standing on it, on top of what they bank; bots go and hold it too.
+              Also GAME MODE in HOST GAME.
   winningcashperplayer  (server) extra cash needed to win per connected player (default 0).
   autobalance (server) players can't join a team that already has more players (default false).
   mapsize     (server) size of the world cube: 64 (original), 96 or 128 (default 64).

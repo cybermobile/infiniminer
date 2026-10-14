@@ -93,6 +93,7 @@ namespace Infiniminer.Tests
                 return null;
             }
 
+            public (int x, int y, int z)? Hill { get; set; }
             public void Moved(ServerPlayer bot) { }
             public void Respawn(ServerPlayer bot) { bot.Alive = true; }
             public void Kill(ServerPlayer bot, string message) { bot.Alive = false; }

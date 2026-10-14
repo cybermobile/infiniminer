@@ -51,6 +51,14 @@ namespace Infiniminer
         Drill,          // v1.8: digs rock
     }
 
+    // How a match is won: by banking treasure (the original game), or by also holding the hill in the middle of
+    // the map, which earns the team money every second.
+    public enum GameMode : byte
+    {
+        Cash,
+        Hill
+    }
+
     public enum PlayerTeam : byte
     {
         None,
