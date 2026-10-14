@@ -56,7 +56,9 @@ The original server trusted almost everything the client said.
       Linux tarball with a menu entry script, Docker images for the server and the server list
 - [x] Installed copies keep settings, bans and saves in a per-user folder
 - [x] CI packages every platform on each push; version tags publish a GitHub release and the images
-- [ ] Later: notarised macOS builds and a signed Windows installer (need paid certificates), Flatpak (the AppImage covers most of what it would)
+- [ ] Later: notarised macOS builds and a signed Windows installer (need paid certificates)
+- [x] Flatpak bundle (`packaging/flatpak`), built and start-checked in CI and attached to releases; publishing
+      it on Flathub would be a separate submission
 
 ## 8. Code health
 - [x] Type-safe game states (`typeof(MainGameState)` instead of strings resolved by reflection)

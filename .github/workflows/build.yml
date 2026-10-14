@@ -77,6 +77,40 @@ jobs:
           name: infiniminer-${{ matrix.rid }}
           path: dist/*
 
+  flatpak:
+    name: Flatpak
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Install Flatpak
+        run: |
+          sudo apt-get update && sudo apt-get install -y flatpak flatpak-builder xvfb
+          # Ubuntu stops unprivileged user namespaces by default, which Flatpak's sandbox needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Build the bundle
+        run: |
+          version=""
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
+          packaging/flatpak/build.sh $version
+      - name: Install it and check the server and game start
+        run: |
+          flatpak install --user -y --noninteractive dist/*.flatpak
+          (sleep 20; echo quit) | timeout 60 flatpak run --command=infiniminer-server io.github.cybermobile.Infiniminer \
+              > server.log 2>&1 || true
+          cat server.log
+          grep -q "SERVER READY" server.log
+          timeout 40 xvfb-run -a flatpak run --env=INFINIMINER_TRACE=1 io.github.cybermobile.Infiniminer > client.log 2>&1 || true
+          tail -20 client.log
+          grep -q "TRACE STATE" client.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: infiniminer-flatpak
+          path: dist/*.flatpak
+
   docker:
     name: Docker image (${{ matrix.image }})
     needs: test
@@ -117,7 +151,7 @@ jobs:
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [package, docker, e2e]
+    needs: [package, flatpak, docker, e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -125,6 +159,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: infiniminer-*       # the packages, not the play test's screenshots
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:

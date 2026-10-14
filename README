@@ -43,6 +43,11 @@ To build release packages (self-contained: players don't need .NET installed) in
                                       # and an AppImage ("Infiniminer.AppImage server" runs the server)
     packaging/package.sh osx-arm64    # zip with Infiniminer.app (Apple Silicon); osx-x64 for Intel Macs.
                                       # Build these on a Mac so the app gets signed.
+    packaging/flatpak/build.sh        # a .flatpak bundle (needs flatpak and flatpak-builder); install it with
+                                      # "flatpak install --user dist/Infiniminer-*.flatpak", then
+                                      # "flatpak run io.github.cybermobile.Infiniminer" (add
+                                      # "--command=infiniminer-server" for the server). CI builds it and checks
+                                      # the game and server start; not yet tried on a real desktop.
 
 Each also builds the server list service for that platform. GitHub Actions (.github/workflows/build.yml)
 builds and tests on all three operating systems, packages every platform and builds the Docker images on

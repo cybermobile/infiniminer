@@ -1,0 +1,39 @@
+# Flatpak manifest for the game client and dedicated server. It packages the self-contained linux-x64 build made
+# by packaging/package.sh rather than building from source inside flatpak-builder (which would need every NuGet
+# package listed here for its offline build). Build it with packaging/flatpak/build.sh.
+#
+# Not yet tried: written and checked against the Flatpak documentation, but never built or run.
+app-id: io.github.cybermobile.Infiniminer
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: infiniminer
+finish-args:
+  - --share=network         # playing online, the server list, UPnP
+  - --share=ipc
+  - --socket=x11            # SDL2 as shipped with MonoGame uses X11 (Xwayland on Wayland desktops)
+  - --socket=pulseaudio
+  - --device=all            # the GPU and game controllers
+  # Self-contained .NET looks for ICU, which the runtime may not have; the game doesn't need it.
+  - --env=DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+modules:
+  - name: infiniminer
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/infiniminer /app/bin
+      - cp -a game/. /app/lib/infiniminer/
+      - ln -s /app/lib/infiniminer/Infiniminer /app/bin/infiniminer
+      - ln -s /app/lib/infiniminer/InfiniminerServer /app/bin/infiniminer-server
+      - install -Dm644 io.github.cybermobile.Infiniminer.desktop -t /app/share/applications
+      - install -Dm644 io.github.cybermobile.Infiniminer.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 infiniminer.png /app/share/icons/hicolor/256x256/apps/io.github.cybermobile.Infiniminer.png
+    sources:
+      - type: dir
+        path: ../../out/linux-x64/Infiniminer
+        dest: game
+      - type: file
+        path: io.github.cybermobile.Infiniminer.desktop
+      - type: file
+        path: io.github.cybermobile.Infiniminer.metainfo.xml
+      - type: file
+        path: ../linux/infiniminer.png

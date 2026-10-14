@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Infiniminer
+Comment=Team-based mining and building game
+Exec=infiniminer
+Icon=io.github.cybermobile.Infiniminer
+Terminal=false
+Categories=Game;ActionGame;
+Keywords=mining;blocks;voxel;multiplayer;

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.cybermobile.Infiniminer</id>
+  <name>Infiniminer</name>
+  <summary>Team-based block mining and building game</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.cybermobile">
+    <name>Zach Barth and contributors</name>
+  </developer>
+  <description>
+    <p>
+      Two teams race to dig gold and diamonds out of a world of blocks and bring them back to the surface.
+      Prospectors find treasure, miners dig fast, engineers build, and sappers blow things up.
+    </p>
+    <p>
+      This is a cross-platform port of the original 2009 game by Zach Barth (Zachtronics), with a server browser,
+      hosting a game from the menu, computer players, controller and Steam Deck support, and spectating.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.cybermobile.Infiniminer.desktop</launchable>
+  <url type="homepage">https://github.com/cybermobile/infiniminer</url>
+  <provides>
+    <binary>infiniminer</binary>
+    <binary>infiniminer-server</binary>
+  </provides>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>gamepad</control>
+  </supports>
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-cartoon">mild</content_attribute>
+    <content_attribute id="social-chat">intense</content_attribute>
+  </content_rating>
+  <releases>
+    <release version="1.9" date="2026-10-14"/>
+  </releases>
+</component>
