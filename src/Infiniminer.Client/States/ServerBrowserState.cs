@@ -99,6 +99,14 @@ namespace Infiniminer.States
             uiFont = Game.Assets.UiFont;
 
             Game.StartServerDiscovery();
+
+            // Started with --connect: join that server once.
+            if (Game.ConnectOnStart != null)
+            {
+                string address = Game.ConnectOnStart;
+                Game.ConnectOnStart = null;
+                JoinAddress(address, address);
+            }
         }
 
         public override void OnLeave(Type newState)

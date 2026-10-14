@@ -24,6 +24,27 @@ jobs:
       - name: Test
         run: dotnet test src/Infiniminer.sln -c Release --no-build
 
+  e2e:
+    name: Play test (Linux, virtual display)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Install a virtual display
+        run: sudo apt-get update && sudo apt-get install -y xvfb xdotool imagemagick
+      - name: Build
+        run: dotnet build src/Infiniminer.sln -c Release
+      - name: Play through the game
+        run: tests/e2e/smoke.sh Release
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: play-test-screenshots
+          path: out/e2e/
+
   package:
     name: Package ${{ matrix.rid }}
     needs: test
@@ -96,7 +117,7 @@ jobs:
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [package, docker]
+    needs: [package, docker, e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -168,6 +168,15 @@ DEVELOPMENT
 The tests cover the shared protocol code and the world generator, and run a real server that a bot client
 joins over UDP (map download, team and class selection, digging, building and input validation).
 
+    tests/e2e/smoke.sh      # needs Xvfb, xdotool and ImageMagick
+
+The smoke test plays the real game against a real server under a virtual display, using a scripted
+controller (INFINIMINER_TEST_GAMEPAD): joining, choosing a team and class, digging, the in-game menu, a
+server restart and automatic rejoin, leaving, and hosting a game. It follows the game through its trace
+output (INFINIMINER_TRACE=1) and saves a screenshot of each step to out/e2e. CI runs it on every push.
+
+The game can join a server straight away with "--connect <address>" (or "+connect <address>").
+
 
 BUILDING THE ORIGINAL VERSION
 =============================

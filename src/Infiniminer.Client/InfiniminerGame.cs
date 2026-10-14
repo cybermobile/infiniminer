@@ -167,8 +167,14 @@ namespace Infiniminer
             get { return ColorBlindMode ? new Color(213, 94, 0) : new Color(222, 24, 24); }
         }
 
+        // "--connect <address>" (or "+connect", as other games use) joins a server straight away.
+        public string ConnectOnStart;
+
         public InfiniminerGame(string[] args)
         {
+            for (int i = 0; i + 1 < args.Length; i++)
+                if (args[i] == "--connect" || args[i] == "+connect")
+                    ConnectOnStart = args[i + 1];
         }
 
         public static string Sanitize(string input)
@@ -215,6 +221,7 @@ namespace Infiniminer
         // The map has arrived: we're in.
         public void OnJoined()
         {
+            GameTrace.Write("JOINED " + CurrentServer);
             Rejoin.Cancel();
             bool ownGame = IsHosting && CurrentServer != null && CurrentServer.Port == HostedServer.Port;
             if (joiningRecent != null && !ownGame)
@@ -354,12 +361,14 @@ namespace Infiniminer
                 if (reason == AutoRejoin.RestartReason && CurrentServer != null)
                 {
                     Rejoin.Begin(CurrentServer, Now);
+                    GameTrace.Write("REJOINING " + CurrentServer);
                     StatusMessage = "THE SERVER IS STARTING A NEW MAP. REJOINING...";
                 }
             }
             if (disconnectInfo.Reason == DisconnectReason.ConnectionRejected)
                 Rejoin.Cancel();
 
+            GameTrace.Write("DISCONNECTED " + disconnectInfo.Reason + " " + reason);
             deferredState = typeof(States.ServerBrowserState);
         }
 
@@ -447,7 +456,7 @@ namespace Infiniminer
             ResetPropertyBag();
 
             // Set the initial state to team selection
-            ChangeState(typeof(States.TitleState));
+            ChangeState(ConnectOnStart != null ? typeof(States.ServerBrowserState) : typeof(States.TitleState));
 
             // Play the title music.
             if (!NoSound)

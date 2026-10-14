@@ -60,6 +60,7 @@ namespace StateMasher
             if (currentState != null)
                 currentState.OnLeave(newState);
 
+            Infiniminer.GameTrace.Write("STATE " + newState.Name);
             currentState = (State)Activator.CreateInstance(newState);
             currentState._P = propertyBag;
             currentState._SM = this;

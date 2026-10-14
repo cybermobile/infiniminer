@@ -76,3 +76,11 @@ The original server trusted almost everything the client said.
       restarts with a new map after a match
 - [x] The local player's state and rules (equipment cycling, class and team changes) live in `LocalPlayer`
 - [x] Linux AppImage (`Infiniminer.AppImage`, or `Infiniminer.AppImage server` for the dedicated server)
+
+## 10. After that
+- [x] Automated play test in CI (`tests/e2e/smoke.sh`): the real game and server under a virtual display,
+      driven by a scripted controller, with a screenshot of every step; `--connect <address>` and trace output
+- [ ] Computer players, so a hosted game isn't empty
+- [ ] Internet play for hosted games (UPnP port mapping)
+- [ ] Quick chat with a controller
+- [ ] Polish: keep team and class after rejoining, softer clouds, team screen artwork
