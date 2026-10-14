@@ -15,14 +15,18 @@ namespace Infiniminer
 
         public IPEndPoint Target { get; private set; }
 
+        // The team and class to pick again once back in, if the player had chosen them.
+        public (PlayerTeam team, PlayerClass playerClass)? Choice { get; private set; }
+
         public bool Active
         {
             get { return Target != null; }
         }
 
-        public void Begin(IPEndPoint target, double now)
+        public void Begin(IPEndPoint target, double now, (PlayerTeam, PlayerClass)? choice = null)
         {
             Target = target;
+            Choice = choice;
             startedAt = now;
             nextAttemptAt = now + FirstAttemptDelay;
             attempting = false;
@@ -55,6 +59,7 @@ namespace Infiniminer
         public void Cancel()
         {
             Target = null;
+            Choice = null;
             attempting = false;
         }
     }

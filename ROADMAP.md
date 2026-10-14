@@ -85,4 +85,6 @@ The original server trusted almost everything the client said.
 - [x] Internet play: hosted games and dedicated servers can ask the router to forward their port (UPnP), show
       the address to give out, and say plainly when the router won't
 - [x] Quick team chat with a controller (hold LT, press a D-pad direction)
-- [ ] Polish: keep team and class after rejoining, softer clouds, team screen artwork
+- [x] Polish: rejoining after a restart keeps your team and class; clouds as bright as the original shader made
+      them (the port had them at full white, which the bloom blew out); the team screen no longer shows the
+      server list's heading and buttons from the original artwork

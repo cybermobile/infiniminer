@@ -31,6 +31,19 @@ namespace Infiniminer.Tests
         }
 
         [Fact]
+        public void RejoiningRemembersTheTeamAndClass()
+        {
+            AutoRejoin rejoin = new AutoRejoin();
+            rejoin.Begin(Server, 0, (PlayerTeam.Blue, PlayerClass.Engineer));
+            Assert.Equal((PlayerTeam.Blue, PlayerClass.Engineer), rejoin.Choice);
+            rejoin.Cancel();
+            Assert.Null(rejoin.Choice);
+
+            rejoin.Begin(Server, 0);
+            Assert.Null(rejoin.Choice);
+        }
+
+        [Fact]
         public void RejoiningCanBeCancelled()
         {
             AutoRejoin rejoin = new AutoRejoin();

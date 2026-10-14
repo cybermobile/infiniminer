@@ -12,6 +12,7 @@ namespace Infiniminer
         public Vector3 Velocity = Vector3.Zero;
         public PlayerTeam Team = PlayerTeam.Red;
         public PlayerClass Class;
+        public bool HasClass;              // chosen a class on this server
         public bool Dead = true;
         public bool RespawnPending = false;
         public byte PositionEpoch = 0;     // the last position epoch the server gave us
@@ -64,6 +65,7 @@ namespace Infiniminer
         public void SetClass(PlayerClass playerClass)
         {
             Class = playerClass;
+            HasClass = true;
             ToolSelected = 0;
             BlockSelected = 0;
             Tools = GameRules.GetTools(playerClass);

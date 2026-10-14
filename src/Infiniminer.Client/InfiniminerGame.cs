@@ -218,10 +218,11 @@ namespace Infiniminer
             get { return currentGameTime.TotalGameTime.TotalSeconds; }
         }
 
-        // The map has arrived: we're in.
-        public void OnJoined()
+        // The map has arrived: we're in. After an automatic rejoin, returns the team and class to pick again.
+        public (PlayerTeam team, PlayerClass playerClass)? OnJoined()
         {
             GameTrace.Write("JOINED " + CurrentServer);
+            var choice = Rejoin.Active ? Rejoin.Choice : null;
             Rejoin.Cancel();
             bool ownGame = IsHosting && CurrentServer != null && CurrentServer.Port == HostedServer.Port;
             if (joiningRecent != null && !ownGame)
@@ -230,6 +231,7 @@ namespace Infiniminer
                 SaveSettings();
             }
             joiningRecent = null;
+            return choice;
         }
 
         // `address` and `name` are remembered in the recent servers list once we're in.
@@ -373,7 +375,8 @@ namespace Infiniminer
                 StatusMessage = reason != "" ? "DISCONNECTED: " + Sanitize(reason).ToUpperInvariant() : "DISCONNECTED FROM THE SERVER.";
                 if (reason == AutoRejoin.RestartReason && CurrentServer != null)
                 {
-                    Rejoin.Begin(CurrentServer, Now);
+                    LocalPlayer player = propertyBag.player;
+                    Rejoin.Begin(CurrentServer, Now, player.HasClass && player.Team != PlayerTeam.None ? (player.Team, player.Class) : null);
                     GameTrace.Write("REJOINING " + CurrentServer);
                     StatusMessage = "THE SERVER IS STARTING A NEW MAP. REJOINING...";
                 }

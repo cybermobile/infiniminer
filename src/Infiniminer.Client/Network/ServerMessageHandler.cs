@@ -63,9 +63,20 @@ namespace Infiniminer
                         if (downloadComplete && !_P.downloadComplete)
                         {
                             _P.downloadComplete = true;
-                            game.OnJoined();
+                            var rejoinChoice = game.OnJoined();
                             if (game.CurrentStateType == typeof(States.LoadingState))
-                                game.ChangeStateAfterNetworkUpdate(typeof(States.TeamSelectionState));
+                            {
+                                if (rejoinChoice is (PlayerTeam team, PlayerClass playerClass))
+                                {
+                                    // Back after the server restarted: same team and class, straight into the game.
+                                    _P.SetPlayerTeam(team);
+                                    _P.SetPlayerClass(playerClass);
+                                    _P.RespawnPlayer();
+                                    game.ChangeStateAfterNetworkUpdate(typeof(States.MainGameState));
+                                }
+                                else
+                                    game.ChangeStateAfterNetworkUpdate(typeof(States.TeamSelectionState));
+                            }
                             game.TitleMusic.Stop();
                             _P.blockEngine.DownloadComplete();
                         }

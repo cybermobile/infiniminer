@@ -75,6 +75,15 @@ namespace Infiniminer.States
             SpriteBatch spriteBatch = _SM.SpriteBatch;
             spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, Game.MenuSampler, null, null, null, Game.MenuTransform);
             spriteBatch.Draw(texMenu, drawRect, Color.White);
+
+            // The original picture reuses the server list's heading and buttons: cover them and name this screen.
+            spriteBatch.Draw(Game.Assets.WhitePixel, new Rectangle(0, 12, 1024, 56), Color.Black);
+            spriteBatch.Draw(Game.Assets.WhitePixel, new Rectangle(0, 708, 1024, 56), Color.Black);
+            const string title = "SELECT A TEAM";
+            Vector2 titleSize = uiFont.MeasureString(title) * 1.5f;
+            uiFont.DrawText(spriteBatch, title, new Vector2((int)(InfiniminerGame.MenuWidth / 2 - titleSize.X / 2), 28), Color.White, scale: new Vector2(1.5f));
+            if (canCancel)
+                QuickDrawText(spriteBatch, _SM.UsingGamePad ? "B: BACK TO THE GAME" : "ESC: BACK TO THE GAME", 725, new Color(150, 150, 150));
             QuickDrawText(spriteBatch, "" + redTeamCount + " PLAYERS", 360, InfiniminerGame.IM_RED);
             QuickDrawText(spriteBatch, "" + blueTeamCount + " PLAYERS", 620, InfiniminerGame.IM_BLUE);
             if (showHighlight)

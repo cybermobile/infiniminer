@@ -125,17 +125,15 @@ shot menu
 press B 1
 wait_for "$work/client.log" "TRACE STATE MainGameState" 2
 
-echo "Restarting the server: the game should rejoin by itself..."
+echo "Restarting the server: the game should rejoin by itself, on the same team and class..."
 echo "restart" >&4
 wait_for "$work/client.log" "TRACE REJOINING"
 shot rejoining
 wait_for "$work/client.log" "TRACE JOINED" 2
-wait_for "$work/client.log" "TRACE STATE TeamSelectionState" 2
-press DPadUp
-press A
-wait_for "$work/client.log" "TRACE STATE ClassSelectionState" 2
-press A
 wait_for "$work/client.log" "TRACE STATE MainGameState" 3
+wait_for "$work/server.log" "PLAYER_ALIVE" 2
+[ "$(game "TRACE STATE TeamSelectionState")" -eq 1 ] || fail "the rejoin asked for a team again"
+sleep 1
 shot rejoined
 
 echo "Leaving the server from the menu..."
@@ -156,10 +154,10 @@ wait_for "$work/client.log" "TRACE STATE HostGameState"
 shot host_settings
 press A                 # START GAME is selected
 wait_for "$work/client.log" "TRACE JOINED" 3 90
-wait_for "$work/client.log" "TRACE STATE TeamSelectionState" 3
+wait_for "$work/client.log" "TRACE STATE TeamSelectionState" 2
 press DPadUp
 press A
-wait_for "$work/client.log" "TRACE STATE ClassSelectionState" 3
+wait_for "$work/client.log" "TRACE STATE ClassSelectionState" 2
 press A
 wait_for "$work/client.log" "TRACE STATE MainGameState" 4
 sleep 1

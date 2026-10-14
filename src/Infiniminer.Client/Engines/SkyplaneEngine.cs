@@ -17,9 +17,10 @@ namespace Infiniminer
         // Each octave is drawn additively here, at the scale and drift speed the shader used.
         static readonly float[] OctaveScale = { 4, 8, 16, 32 };
         static readonly float[] OctaveSpeed = { 8, 4, 2, 1 };
-        // The shader's weights (1/2, 1/4, 1/8, 1/16) were followed by a 1-(1-x)^2 curve, which is
-        // close to doubling for the sparse noise used here.
-        static readonly float[] OctaveWeight = { 1f, 0.5f, 0.25f, 0.125f };
+        // The shader's weights (1/2, 1/4, 1/8, 1/16) were followed by a 1-(1-x)^2 curve. The noise is sparse, so
+        // octaves rarely overlap and the curve can be applied to each weight: 3/4, 7/16, 15/64, 31/256. (Doubling
+        // the weights instead made the brightest clouds pure white, which the bloom then blew out.)
+        static readonly float[] OctaveWeight = { 0.75f, 0.4375f, 0.234375f, 0.12109375f };
         // A plane above the world (originally y = 100 over a 64 cube), sized to cover it.
         static Vector3[] Corners(int mapSize)
         {
