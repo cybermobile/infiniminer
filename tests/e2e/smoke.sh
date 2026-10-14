@@ -111,6 +111,13 @@ pad "rstick 0 -0.9"; sleep 0.8; pad "rstick 0 0"
 pad "rt 1"; sleep 3; pad "rt 0"; sleep 0.5
 shot digging
 
+echo "Sending a quick chat message (LT + D-pad)..."
+pad "lt 1"; sleep 0.3
+shot quick_chat
+press DPadRight
+pad "lt 0"
+wait_for "$work/server.log" "FOUND GOLD!"
+
 echo "Opening and closing the in-game menu..."
 press Start 1
 wait_for "$work/client.log" "TRACE STATE GameMenuState"

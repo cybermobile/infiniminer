@@ -95,9 +95,10 @@ In game:
     RB, D-pad up/down     change tool      LB, D-pad left/right   change block
     X            deposit ore (at a bank)   B            withdraw ore (at a bank)
     Y            ping your team            Back (hold)  scoreboard
-    Start        menu
+    LT + D-pad   quick team chat           Start        menu
 
-Chat still needs a keyboard. On-screen prompts switch between keyboard and controller buttons depending on
+Typing a chat message needs a keyboard; LT + D-pad sends NEED ORE!, FOUND GOLD!, HELP ME! or ENEMY
+SPOTTED! to your team. On-screen prompts switch between keyboard and controller buttons depending on
 which you used last.
 
 Settings are saved in client.config.txt; the server reads server.config.txt and keeps banlist.txt and

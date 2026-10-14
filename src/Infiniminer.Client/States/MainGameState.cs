@@ -500,6 +500,17 @@ namespace Infiniminer.States
                 return;
             }
 
+            // LT + D-pad: quick team chat.
+            if (Pad.IsDown(QuickChat.Modifier))
+            {
+                string message = QuickChat.MessageFor(button);
+                if (message != null)
+                {
+                    _P.Send(ClientMessages.Chat(_P.player.Team == PlayerTeam.Red ? ChatMessageType.SayRedTeam : ChatMessageType.SayBlueTeam, message));
+                    return;
+                }
+            }
+
             switch (button)
             {
                 case Buttons.A: Jump(); break;

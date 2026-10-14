@@ -406,6 +406,20 @@ namespace Infiniminer
 
             spriteBatch.Draw(texRadarForeground, new Vector2(10, 30), Color.White);
 
+            // Quick chat choices while LT is held.
+            if (gameInstance.GamePadInput.IsDown(QuickChat.Modifier) && !_P.player.Dead && _P.chatMode == ChatMessageType.None)
+            {
+                int top = ScreenHeight / 2 + 60, lineHeight = 22;
+                string[] lines = new[] { "QUICK CHAT (TEAM)" }
+                    .Concat(QuickChat.Messages.Select(m => m.label + ": " + m.message)).ToArray();
+                spriteBatch.Draw(texBlank, new Rectangle(ScreenWidth / 2 - 160, top - 10, 320, lines.Length * lineHeight + 14), new Color(Color.Black, 0.75f));
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    Vector2 size = uiFont.MeasureString(lines[i]);
+                    spriteBatch.DrawString(uiFont, lines[i], new Vector2((int)(ScreenWidth / 2 - size.X / 2), top + i * lineHeight), i == 0 ? Color.Gray : Color.White);
+                }
+            }
+
             // Draw escape message.
             if (Keyboard.GetState().IsKeyDown(Keys.Escape))
             {

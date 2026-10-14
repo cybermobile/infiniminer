@@ -209,6 +209,7 @@ namespace Infiniminer
             ("X", "DEPOSIT ORE (AT A BANK)"),
             ("B", "WITHDRAW ORE (AT A BANK)"),
             ("Y", "PING TEAM"),
+            ("LT + D-PAD", "QUICK TEAM CHAT"),
             ("BACK (HOLD)", "SCOREBOARD"),
             ("START", "MENU"),
         };

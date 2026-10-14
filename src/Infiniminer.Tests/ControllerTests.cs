@@ -158,6 +158,15 @@ namespace Infiniminer.Tests
         }
 
         [Fact]
+        public void QuickChatHasAMessageForEachDirection()
+        {
+            Assert.Equal("NEED ORE!", QuickChat.MessageFor(Buttons.DPadUp));
+            Assert.Equal(4, new[] { Buttons.DPadUp, Buttons.DPadDown, Buttons.DPadLeft, Buttons.DPadRight }
+                .Select(QuickChat.MessageFor).Distinct().Count(m => m != null));
+            Assert.Null(QuickChat.MessageFor(Buttons.A));
+        }
+
+        [Fact]
         public void ControllerSettingsAreSaved()
         {
             string path = Path.Combine(Path.GetTempPath(), "infiniminer-controller-" + Guid.NewGuid().ToString("N") + ".txt");
