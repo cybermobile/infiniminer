@@ -65,3 +65,13 @@ The original server trusted almost everything the client said.
       rules shared by the server and the client's prediction (`GameRules.Dig`)
 - [x] Client tests: radar, chat, sound panning, dig rules, wire format, state construction
 - [ ] Later: move the local player's fields out of `PropertyBag` into their own class
+
+## 9. Next
+- [x] Controller support: analog movement and look, hold RT to dig, rumble, every menu navigable with the
+      D-pad/stick (and the keyboard), an in-game menu (Escape or Start), prompts that follow the device in use,
+      controller sensitivity and vibration options, and a controller layout page
+- [ ] Host a game from the client (runs a server in the background; single player and LAN parties without a
+      separate server window)
+- [ ] Recent servers in the server browser, and reconnecting to the last one
+- [ ] Move the local player's fields out of `PropertyBag` into their own class
+- [ ] Linux AppImage

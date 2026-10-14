@@ -13,6 +13,8 @@ namespace Infiniminer.States
         Type nextState = null;
         SpriteFontBase uiFont;
         bool canCancel = false;
+        int highlighted = 0;            // 0 red, 1 blue: the keyboard/controller selection
+        bool showHighlight = false;     // shown once the keyboard or controller is used
 
         ClickRegion[] clkTeamMenu = new ClickRegion[2] {
             new ClickRegion(new Rectangle(229,156,572,190), "red"), 
@@ -30,8 +32,10 @@ namespace Infiniminer.States
 
             uiFont = Game.Assets.UiFont;
 
-            if (oldState == typeof(MainGameState))
+            if (oldState == typeof(MainGameState) || oldState == typeof(GameMenuState))
                 canCancel = true;
+            highlighted = _P.playerTeam == PlayerTeam.Blue ? 1 : 0;
+            showHighlight = _SM.UsingGamePad;
         }
 
         public override void OnLeave(Type newState)
@@ -73,6 +77,8 @@ namespace Infiniminer.States
             spriteBatch.Draw(texMenu, drawRect, Color.White);
             QuickDrawText(spriteBatch, "" + redTeamCount + " PLAYERS", 360, InfiniminerGame.IM_RED);
             QuickDrawText(spriteBatch, "" + blueTeamCount + " PLAYERS", 620, InfiniminerGame.IM_BLUE);
+            if (showHighlight)
+                Game.Assets.DrawOutline(spriteBatch, clkTeamMenu[highlighted].Rectangle, Color.White);
             spriteBatch.End();
         }
 
@@ -80,6 +86,27 @@ namespace Infiniminer.States
         {
             if (key == Keys.Escape && canCancel)
                 nextState = typeof(MainGameState);
+            if (key == Keys.Up || key == Keys.Down || key == Keys.Left || key == Keys.Right)
+            {
+                if (showHighlight)
+                    highlighted = 1 - highlighted;
+                showHighlight = true;
+                _P.PlaySound(InfiniminerSound.ClickLow);
+            }
+            if ((key == Keys.Enter || key == Keys.Space) && showHighlight)
+                ChooseTeam(highlighted == 0 ? PlayerTeam.Red : PlayerTeam.Blue);
+        }
+
+        void ChooseTeam(PlayerTeam team)
+        {
+            if (_P.playerTeam == team && canCancel)
+                nextState = typeof(MainGameState);
+            else
+            {
+                _P.SetPlayerTeam(team);
+                nextState = typeof(ClassSelectionState);
+            }
+            _P.PlaySound(InfiniminerSound.ClickHigh);
         }
 
         public override void OnKeyUp(Keys key)
@@ -97,24 +124,10 @@ namespace Infiniminer.States
             switch (ClickRegion.HitTest(clkTeamMenu, new Point(x, y)))
             {
                 case "red":
-                    if (_P.playerTeam == PlayerTeam.Red && canCancel)
-                        nextState = typeof(MainGameState);
-                    else
-                    {
-                        _P.SetPlayerTeam(PlayerTeam.Red);
-                        nextState = typeof(ClassSelectionState);
-                    }
-                    _P.PlaySound(InfiniminerSound.ClickHigh);
+                    ChooseTeam(PlayerTeam.Red);
                     break;
                 case "blue":
-                    if (_P.playerTeam == PlayerTeam.Blue && canCancel)
-                        nextState = typeof(MainGameState);
-                    else
-                    {
-                        _P.SetPlayerTeam(PlayerTeam.Blue);
-                        nextState = typeof(ClassSelectionState);
-                    }
-                    _P.PlaySound(InfiniminerSound.ClickHigh);
+                    ChooseTeam(PlayerTeam.Blue);
                     break;
             }
         }

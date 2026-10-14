@@ -48,6 +48,31 @@ namespace Infiniminer
             return texture;
         }
 
+        // A single white pixel, for drawing rectangles and outlines.
+        public Texture2D WhitePixel
+        {
+            get
+            {
+                if (!textures.TryGetValue("$white", out Texture2D texture))
+                {
+                    texture = new Texture2D(graphicsDevice, 1, 1);
+                    texture.SetData(new[] { Color.White });
+                    textures["$white"] = texture;
+                }
+                return texture;
+            }
+        }
+
+        // The outline used to show the keyboard or controller selection on the menu images.
+        public void DrawOutline(SpriteBatch spriteBatch, Rectangle area, Color color, int thickness = 4)
+        {
+            Texture2D pixel = WhitePixel;
+            spriteBatch.Draw(pixel, new Rectangle(area.X, area.Y, area.Width, thickness), color);
+            spriteBatch.Draw(pixel, new Rectangle(area.X, area.Bottom - thickness, area.Width, thickness), color);
+            spriteBatch.Draw(pixel, new Rectangle(area.X, area.Y, thickness, area.Height), color);
+            spriteBatch.Draw(pixel, new Rectangle(area.Right - thickness, area.Y, thickness, area.Height), color);
+        }
+
         public SoundEffect Sound(string name)
         {
             if (!sounds.TryGetValue(name, out SoundEffect sound))

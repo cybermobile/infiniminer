@@ -17,10 +17,27 @@ namespace Infiniminer.States
 
         Type nextState = null;
         bool mouseInitialized = false;
+        bool escapePressedHere = false; // the menu opens when Escape is released, if it was pressed in this state
+        bool escapeComboUsed = false;   // Escape+Y/O/K, or Escape to cancel chat: releasing it doesn't open the menu
+        bool wasDead = true;
+        ScreenEffect lastEffect = ScreenEffect.None;
+
+        GamePadInput Pad
+        {
+            get { return _SM.GamePadInput; }
+        }
+
+        // The controller's buttons are game actions here, not menu navigation.
+        public override bool UsesMenuNavigation
+        {
+            get { return false; }
+        }
 
         public override void OnEnter(Type oldState)
         {
             _SM.IsMouseVisible = false;
+            wasDead = _P.playerDead;
+            lastEffect = _P.screenEffect;
         }
 
         public override void OnLeave(Type newState)
@@ -81,8 +98,19 @@ namespace Infiniminer.States
             else
                 mouseInitialized = false;
 
+            // So does the right stick.
+            if (_SM.WindowHasFocus() && Pad.RightStick != Vector2.Zero)
+            {
+                var (yaw, pitch) = ControllerLook.Turn(Pad.RightStick, Game.Settings.ControllerSensitivity, Game.InvertMouseYAxis,
+                    (float)gameTime.ElapsedGameTime.TotalSeconds);
+                _P.playerCamera.Yaw += yaw;
+                _P.playerCamera.Pitch = (float)Math.Clamp(_P.playerCamera.Pitch + pitch, -Math.PI * 0.49, Math.PI * 0.49);
+            }
+
             // Digging like a freaking terrier! Now for everyone!
-            if (mouseInitialized && mouseState.LeftButton == ButtonState.Pressed && !_P.playerDead && _P.playerToolCooldown == 0)
+            bool digging = (mouseInitialized && mouseState.LeftButton == ButtonState.Pressed)
+                || (_SM.WindowHasFocus() && Pad.IsDown(Buttons.RightTrigger));
+            if (digging && !_P.playerDead && _P.playerToolCooldown == 0)
             {
                 if (_P.playerTools[_P.playerToolSelected] == PlayerTools.Pickaxe)
                     _P.FirePickaxe();
@@ -110,6 +138,16 @@ namespace Infiniminer.States
             
             // Update the camera regardless of if we"re alive or not.
             _P.UpdateCamera(gameTime);
+
+            // The controller rumbles for deaths, hard landings and nearby explosions.
+            if (_P.playerDead && !wasDead)
+                Rumble(0.8f, 0.5);
+            else if (_P.screenEffect != lastEffect && _P.screenEffect == ScreenEffect.Explosion)
+                Rumble(0.6f, 0.6);
+            else if (_P.screenEffect != lastEffect && _P.screenEffect == ScreenEffect.Fall)
+                Rumble(0.5f, 0.25);
+            wasDead = _P.playerDead;
+            lastEffect = _P.screenEffect;
 
             return nextState;
         }
@@ -217,6 +255,7 @@ namespace Infiniminer.States
 
             // Pressing forward moves us in the direction we"re looking.
             Vector3 moveVector = Vector3.Zero;
+            float moveSpeed = 1;
 
             if (_P.chatMode == ChatMessageType.None)
             {
@@ -228,6 +267,10 @@ namespace Infiniminer.States
                     moveVector += _P.playerCamera.GetRightVector();
                 if (Game.Settings.IsDown(keyState, GameAction.MoveLeft))
                     moveVector -= _P.playerCamera.GetRightVector();
+
+                // The left stick walks at any speed up to a run.
+                if (moveVector.X == 0 && moveVector.Z == 0 && _SM.WindowHasFocus())
+                    (moveVector, moveSpeed) = ControllerLook.Walk(Pad.LeftStick, _P.playerCamera.GetLookVector(), _P.playerCamera.GetRightVector());
             }
             
             if (moveVector.X != 0 || moveVector.Z != 0)
@@ -235,7 +278,7 @@ namespace Infiniminer.States
                 // "Flatten" the movement vector so that we don"t move up/down.
                 moveVector.Y = 0;
                 moveVector.Normalize();
-                moveVector *= MOVESPEED * (float)gameTime.ElapsedGameTime.TotalSeconds;
+                moveVector *= MOVESPEED * moveSpeed * (float)gameTime.ElapsedGameTime.TotalSeconds;
                 if (movingOnRoad)
                     moveVector *= 2;
 
@@ -299,6 +342,15 @@ namespace Infiniminer.States
 
         public override void OnKeyDown(Keys key)
         {
+            // Escape on its own opens the menu when it is released (see OnKeyUp); with Y, O or K it is a shortcut.
+            if (key == Keys.Escape)
+            {
+                escapePressedHere = true;
+                escapeComboUsed = _P.chatMode != ChatMessageType.None;
+            }
+            else if (Keyboard.GetState().IsKeyDown(Keys.Escape) && (key == Keys.Y || key == Keys.O || key == Keys.K))
+                escapeComboUsed = true;
+
             // Exit!
             if (key == Keys.Y && Keyboard.GetState().IsKeyDown(Keys.Escape))
             {
@@ -356,56 +408,18 @@ namespace Infiniminer.States
 
             if (!_P.playerDead)
             {
-                // Jump!
                 if (key == Game.Settings.Key(GameAction.Jump))
-                {
-                    Vector3 footPosition = _P.playerPosition + new Vector3(0f, -1.5f, 0f);
-                    if (_P.blockEngine.SolidAtPointForPlayer(footPosition) && _P.playerVelocity.Y == 0)
-                    {
-                        _P.playerVelocity.Y = JUMPVELOCITY;
-                        float amountBelowSurface = ((ushort)footPosition.Y) + 1 - footPosition.Y;
-                        _P.playerPosition.Y += amountBelowSurface + 0.01f;
-                    }
-                }
-
-                // Change weapon!
+                    Jump();
                 if (key == Game.Settings.Key(GameAction.NextTool))
-                {
-                    _P.PlaySound(InfiniminerSound.ClickLow);
-                    _P.playerToolSelected += 1;
-                    if (_P.playerToolSelected >= _P.playerTools.Length)
-                        _P.playerToolSelected = 0;
-                }
-
-                // Change block type!
-                if (key == Game.Settings.Key(GameAction.NextBlock) && _P.playerTools[_P.playerToolSelected] == PlayerTools.ConstructionGun)
-                {
-                    _P.PlaySound(InfiniminerSound.ClickLow);
-                    _P.playerBlockSelected += 1;
-                    if (_P.playerBlockSelected >= _P.playerBlocks.Length)
-                        _P.playerBlockSelected = 0;
-                }
-
-                // Deposit and withdraw from a bank.
-                if (_P.AtBankTerminal())
-                {
-                    if (key == Game.Settings.Key(GameAction.DepositOre))
-                    {
-                        _P.DepositOre();
-                        _P.PlaySound(InfiniminerSound.ClickHigh);
-                    }
-                    if (key == Game.Settings.Key(GameAction.WithdrawOre))
-                    {
-                        _P.WithdrawOre();
-                        _P.PlaySound(InfiniminerSound.ClickHigh);
-                    }
-                }
-
-                // Radar pings.
+                    CycleTool(1);
+                if (key == Game.Settings.Key(GameAction.NextBlock))
+                    CycleBlock(1);
+                if (key == Game.Settings.Key(GameAction.DepositOre))
+                    DepositOre();
+                if (key == Game.Settings.Key(GameAction.WithdrawOre))
+                    WithdrawOre();
                 if (key == Game.Settings.Key(GameAction.Ping))
-                {
-                    _P.Send(ClientMessages.Ping(_P.playerMyId));
-                }
+                    Ping();
 
                 // Change class.
                 if (key == Game.Settings.Key(GameAction.ChangeClass) && _P.playerPosition.Y > _P.SurfaceHeight)
@@ -417,6 +431,93 @@ namespace Infiniminer.States
             }
         }
 
+        void Jump()
+        {
+            Vector3 footPosition = _P.playerPosition + new Vector3(0f, -1.5f, 0f);
+            if (_P.blockEngine.SolidAtPointForPlayer(footPosition) && _P.playerVelocity.Y == 0)
+            {
+                _P.playerVelocity.Y = JUMPVELOCITY;
+                float amountBelowSurface = ((ushort)footPosition.Y) + 1 - footPosition.Y;
+                _P.playerPosition.Y += amountBelowSurface + 0.01f;
+            }
+        }
+
+        void CycleTool(int direction)
+        {
+            _P.PlaySound(InfiniminerSound.ClickLow);
+            _P.playerToolSelected = (_P.playerToolSelected + direction + _P.playerTools.Length) % _P.playerTools.Length;
+        }
+
+        void CycleBlock(int direction)
+        {
+            if (_P.playerTools[_P.playerToolSelected] != PlayerTools.ConstructionGun)
+                return;
+            _P.PlaySound(InfiniminerSound.ClickLow);
+            _P.playerBlockSelected = (_P.playerBlockSelected + direction + _P.playerBlocks.Length) % _P.playerBlocks.Length;
+        }
+
+        void DepositOre()
+        {
+            if (!_P.AtBankTerminal())
+                return;
+            _P.DepositOre();
+            _P.PlaySound(InfiniminerSound.ClickHigh);
+        }
+
+        void WithdrawOre()
+        {
+            if (!_P.AtBankTerminal())
+                return;
+            _P.WithdrawOre();
+            _P.PlaySound(InfiniminerSound.ClickHigh);
+        }
+
+        void Ping()
+        {
+            _P.Send(ClientMessages.Ping(_P.playerMyId));
+        }
+
+        void Rumble(float strength, double seconds)
+        {
+            if (Game.Settings.Vibration && _SM.UsingGamePad)
+                Pad.Rumble(strength, seconds);
+        }
+
+        public override void OnGamePadButtonDown(Buttons button)
+        {
+            // While typing a chat message the controller does nothing.
+            if (_P.chatMode != ChatMessageType.None)
+                return;
+
+            if (button == Buttons.Start)
+            {
+                nextState = typeof(GameMenuState);
+                return;
+            }
+
+            if (_P.playerDead)
+            {
+                if (button == Buttons.A || button == Buttons.RightTrigger)
+                    TryRespawn();
+                return;
+            }
+
+            switch (button)
+            {
+                case Buttons.A: Jump(); break;
+                case Buttons.RightTrigger: UseTool(); break;
+                case Buttons.RightShoulder:
+                case Buttons.DPadDown: CycleTool(1); break;
+                case Buttons.DPadUp: CycleTool(-1); break;
+                case Buttons.LeftShoulder:
+                case Buttons.DPadRight: CycleBlock(1); break;
+                case Buttons.DPadLeft: CycleBlock(-1); break;
+                case Buttons.X: DepositOre(); break;
+                case Buttons.B: WithdrawOre(); break;
+                case Buttons.Y: Ping(); break;
+            }
+        }
+
         public override void OnTextInput(char character)
         {
             if (_P.chatMode != ChatMessageType.None)
@@ -425,46 +526,52 @@ namespace Infiniminer.States
 
         public override void OnKeyUp(Keys key)
         {
-            
+            // (A release left over from closing another menu with Escape doesn't count.)
+            if (key == Keys.Escape && escapePressedHere && !escapeComboUsed && nextState == null)
+                nextState = typeof(GameMenuState);
+            if (key == Keys.Escape)
+                escapePressedHere = false;
         }
 
         public override void OnMouseDown(MouseButton button, int x, int y)
         {
-            // If we"re alive, use our currently selected tool!
-            if (!_P.playerDead && _P.playerToolCooldown == 0)
+            if (_P.playerDead)
+                TryRespawn();
+            else
+                UseTool();
+        }
+
+        // Fires the selected tool (the pickaxe and drill dig while the button is held; see OnUpdate).
+        void UseTool()
+        {
+            if (_P.playerToolCooldown != 0)
+                return;
+            switch (_P.playerTools[_P.playerToolSelected])
             {
-                switch (_P.playerTools[_P.playerToolSelected])
-                {
-                    // Disabled as everyone speed-mines now.
-                    //case PlayerTools.Pickaxe:
-                    //    if (_P.playerClass != PlayerClass.Miner)
-                    //        _P.FirePickaxe();
-                    //    break;
+                case PlayerTools.ConstructionGun:
+                    _P.FireConstructionGun(_P.playerBlocks[_P.playerBlockSelected]);
+                    break;
 
-                    case PlayerTools.ConstructionGun:
-                        _P.FireConstructionGun(_P.playerBlocks[_P.playerBlockSelected]);
-                        break;
+                case PlayerTools.DeconstructionGun:
+                    _P.FireDeconstructionGun();
+                    break;
 
-                    case PlayerTools.DeconstructionGun:
-                        _P.FireDeconstructionGun();
-                        break;
+                case PlayerTools.Detonator:
+                    _P.PlaySound(InfiniminerSound.ClickHigh);
+                    _P.FireDetonator();
+                    break;
 
-                    case PlayerTools.Detonator:
-                        _P.PlaySound(InfiniminerSound.ClickHigh);
-                        _P.FireDetonator();
-                        break;
-
-                    case PlayerTools.ProspectingRadar:
-                        _P.FireRadar();
-                        break;
-                }
-            }     
-       
-            // If we"re dead, come back to life.
-            if (_P.playerDead && !_P.respawnPending && _P.screenEffectCounter > 2)
-            {
-                _P.RespawnPlayer();
+                case PlayerTools.ProspectingRadar:
+                    _P.FireRadar();
+                    break;
             }
+        }
+
+        // Come back to life once the death screen has had a moment.
+        void TryRespawn()
+        {
+            if (_P.playerDead && !_P.respawnPending && _P.screenEffectCounter > 2)
+                _P.RespawnPlayer();
         }
 
         public override void OnMouseUp(MouseButton button, int x, int y)
@@ -476,22 +583,10 @@ namespace Infiniminer.States
         {
             if (_P.playerDead)
                 return;
-
-            if (scrollDelta > 0 && _P.playerTools[_P.playerToolSelected] == PlayerTools.ConstructionGun)
-            {
-                _P.PlaySound(InfiniminerSound.ClickLow);
-                _P.playerBlockSelected += 1;
-                if (_P.playerBlockSelected >= _P.playerBlocks.Length)
-                    _P.playerBlockSelected = 0;
-            }
-
-            if (scrollDelta < 0 && _P.playerTools[_P.playerToolSelected] == PlayerTools.ConstructionGun)
-            {
-                _P.PlaySound(InfiniminerSound.ClickLow);
-                _P.playerBlockSelected -= 1;
-                if (_P.playerBlockSelected < 0)
-                    _P.playerBlockSelected = _P.playerBlocks.Length-1;
-            }
+            if (scrollDelta > 0)
+                CycleBlock(1);
+            if (scrollDelta < 0)
+                CycleBlock(-1);
         }
     }
 }

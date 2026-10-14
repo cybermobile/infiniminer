@@ -41,6 +41,8 @@ namespace Infiniminer
         public int FieldOfView = 70;        // degrees
         public int UiScale = 0;             // 0 = automatic
         public bool ColorBlind = false;
+        public int ControllerSensitivity = 10;  // 1-20: right stick look speed
+        public bool Vibration = true;
         public string ServerListUrl = "";
         public Dictionary<GameAction, Keys> KeyBindings = DefaultKeyBindings();
 
@@ -113,6 +115,8 @@ namespace Infiniminer
             settings.FieldOfView = Math.Clamp(dataFile.GetInt("fov", settings.FieldOfView), MinFieldOfView, MaxFieldOfView);
             settings.UiScale = Math.Clamp(dataFile.GetInt("uiscale", settings.UiScale), 0, MaxUiScale);
             settings.ColorBlind = dataFile.GetBool("colorblind", settings.ColorBlind);
+            settings.ControllerSensitivity = Math.Clamp(dataFile.GetInt("controllersensitivity", settings.ControllerSensitivity), MinSensitivity, MaxSensitivity);
+            settings.Vibration = dataFile.GetBool("vibration", settings.Vibration);
             settings.ServerListUrl = dataFile.GetString("serverlist", settings.ServerListUrl);
             foreach (GameAction action in Enum.GetValues<GameAction>())
                 if (Enum.TryParse(dataFile.GetString(ConfigKey(action), ""), true, out Keys key) && key != Keys.None)
@@ -148,6 +152,10 @@ namespace Infiniminer
             Line();
             Line("# Colour-blind friendly team colours, and [R]/[B] tags on team chat.");
             Line("colorblind = " + Bool(ColorBlind));
+            Line();
+            Line("# Controller: right stick look speed from 1 to 20, and whether the controller vibrates.");
+            Line("controllersensitivity = " + ControllerSensitivity.ToString(CultureInfo.InvariantCulture));
+            Line("vibration = " + Bool(Vibration));
             Line();
             Line("# This value specifies the override volume multiplier, for people who find the sounds too loud.");
             Line("volume = " + Volume.ToString("0.0#", CultureInfo.InvariantCulture));

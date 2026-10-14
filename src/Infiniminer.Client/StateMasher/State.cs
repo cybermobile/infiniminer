@@ -55,6 +55,17 @@ namespace StateMasher
         {
         }
 
+        // When true, the controller's D-pad, left stick, A and B arrive as arrow keys, Enter and Escape.
+        public virtual bool UsesMenuNavigation
+        {
+            get { return true; }
+        }
+
+        // Every controller button press (after any menu navigation keys it caused).
+        public virtual void OnGamePadButtonDown(Buttons button)
+        {
+        }
+
         public virtual void OnMouseDown(MouseButton button, int x, int y)
         {
         }

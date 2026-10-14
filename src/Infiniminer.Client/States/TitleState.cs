@@ -54,6 +54,26 @@ namespace Infiniminer.States
             {
                 _SM.Exit();
             }
+            else if (key == Keys.Enter || key == Keys.Space)
+                Continue();
+        }
+
+        void Continue()
+        {
+            nextState = typeof(ServerBrowserState);
+            _P.PlaySound(InfiniminerSound.ClickHigh);
+        }
+
+        // Any of A or Start continues; B shouldn't quit the game the way Escape does.
+        public override bool UsesMenuNavigation
+        {
+            get { return false; }
+        }
+
+        public override void OnGamePadButtonDown(Buttons button)
+        {
+            if (button == Buttons.A || button == Buttons.Start)
+                Continue();
         }
 
         public override void OnKeyUp(Keys key)
@@ -63,11 +83,7 @@ namespace Infiniminer.States
 
         public override void OnMouseDown(MouseButton button, int x, int y)
         {
-            Point menuPoint = Game.ToMenu(x, y);
-            x = menuPoint.X;
-            y = menuPoint.Y;
-            nextState = typeof(ServerBrowserState);
-            _P.PlaySound(InfiniminerSound.ClickHigh);
+            Continue();
         }
 
         public override void OnMouseUp(MouseButton button, int x, int y)

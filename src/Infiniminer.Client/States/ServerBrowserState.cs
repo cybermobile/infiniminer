@@ -17,6 +17,7 @@ namespace Infiniminer.States
         List<int> descWidths = new List<int>();
         SpriteFontBase uiFont;
         bool directConnectIPEnter = false;
+        int highlighted = -1;           // the keyboard/controller selection in the server list (-1: none yet)
         string directConnectIP = "";
 
         ClickRegion[] clkMenuServer = new ClickRegion[3] {
@@ -68,15 +69,14 @@ namespace Infiniminer.States
             spriteBatch.Draw(texMenu, drawRect, Color.White);
 
             int drawY = 80;
-            foreach (ServerInformation server in serverList)
+            for (int i = 0; i < serverList.Count && drawY < 660; i++, drawY += 25)
             {
-                if (drawY < 660)
-                {
-                    int textWidth = (int)(uiFont.MeasureString(server.GetServerDesc()).X);
-                    descWidths.Add(textWidth + 30);
-                    spriteBatch.DrawString(uiFont, server.GetServerDesc(), new Vector2(InfiniminerGame.MenuWidth / 2 - textWidth / 2, drawRect.Y + drawY), Color.White);
-                    drawY += 25;
-                }
+                string description = serverList[i].GetServerDesc();
+                int textWidth = (int)(uiFont.MeasureString(description).X);
+                descWidths.Add(textWidth + 30);
+                if (i == highlighted)
+                    spriteBatch.Draw(Game.Assets.WhitePixel, new Rectangle(InfiniminerGame.MenuWidth / 2 - textWidth / 2 - 15, drawRect.Y + drawY - 4, textWidth + 30, 24), new Color(60, 60, 60));
+                spriteBatch.DrawString(uiFont, description, new Vector2(InfiniminerGame.MenuWidth / 2 - textWidth / 2, drawRect.Y + drawY), Color.White);
             }
 
             spriteBatch.DrawString(uiFont, InfiniminerGame.INFINIMINER_VERSION, new Vector2(10, InfiniminerGame.MenuHeight - 20), Color.White);
@@ -89,6 +89,12 @@ namespace Infiniminer.States
 
             if (directConnectIPEnter)
                 spriteBatch.DrawString(uiFont, "ENTER IP: " + directConnectIP, new Vector2(drawRect.X + 30, drawRect.Y + 690), Color.White);
+            else
+            {
+                string hint = _SM.UsingGamePad ? "A: JOIN   X: REFRESH   Y: OPTIONS   B: BACK" : "UP/DOWN AND ENTER: JOIN   F5: REFRESH";
+                Vector2 hintSize = uiFont.MeasureString(hint);
+                spriteBatch.DrawString(uiFont, hint, new Vector2((int)(InfiniminerGame.MenuWidth / 2 - hintSize.X / 2), drawRect.Y + 690), new Color(150, 150, 150));
+            }
 
             // The options button sits between the two buttons painted into the menu image.
             SpriteFontBase titleFont = Game.Assets.TitleFont;
@@ -189,6 +195,49 @@ namespace Infiniminer.States
                 {
                     nextState = typeof(TitleState);
                 }
+
+                // Choosing a server without the mouse.
+                int visible = Math.Min(serverList.Count, 24);
+                if ((key == Keys.Up || key == Keys.Down) && visible > 0)
+                {
+                    if (highlighted < 0 || highlighted >= visible)
+                        highlighted = key == Keys.Up ? visible - 1 : 0;
+                    else
+                        highlighted = (highlighted + (key == Keys.Up ? -1 : 1) + visible) % visible;
+                    _P.PlaySound(InfiniminerSound.ClickLow);
+                }
+                if (key == Keys.Enter && highlighted >= 0 && highlighted < serverList.Count)
+                    Join(serverList[highlighted]);
+                if (key == Keys.F5)
+                    Refresh();
+            }
+        }
+
+        void Join(ServerInformation server)
+        {
+            Game.JoinGame(server.ipEndPoint);
+            nextState = typeof(LoadingState);
+            _P.PlaySound(InfiniminerSound.ClickHigh);
+        }
+
+        void Refresh()
+        {
+            _P.PlaySound(InfiniminerSound.ClickHigh);
+            Game.StatusMessage = "";
+            highlighted = -1;
+            Game.StartServerDiscovery();
+        }
+
+        public override void OnGamePadButtonDown(Buttons button)
+        {
+            if (directConnectIPEnter)
+                return;
+            if (button == Buttons.X)
+                Refresh();
+            if (button == Buttons.Y || button == Buttons.Start)
+            {
+                _P.PlaySound(InfiniminerSound.ClickHigh);
+                nextState = typeof(SettingsState);
             }
         }
 
@@ -209,11 +258,7 @@ namespace Infiniminer.States
                 {
                     int distanceFromCenter = Math.Abs(InfiniminerGame.MenuWidth / 2 - x);
                     if (distanceFromCenter < descWidths[serverIndex] / 2)
-                    {
-                        Game.JoinGame(serverList[serverIndex].ipEndPoint);
-                        nextState = typeof(LoadingState);
-                        _P.PlaySound(InfiniminerSound.ClickHigh);
-                    }
+                        Join(serverList[serverIndex]);
                 }
 
                 x -= drawRect.X;
@@ -221,9 +266,7 @@ namespace Infiniminer.States
                 switch (ClickRegion.HitTest(clkMenuServer, new Point(x, y)))
                 {
                     case "refresh":
-                        _P.PlaySound(InfiniminerSound.ClickHigh);
-                        Game.StatusMessage = "";
-                        Game.StartServerDiscovery();
+                        Refresh();
                         break;
 
                     case "options":

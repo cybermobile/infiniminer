@@ -1,68 +1,62 @@
-using FontStashSharp;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
-using StateMasher;
 
 namespace Infiniminer.States
 {
     // Options and key bindings. Every change is applied and saved to client.config.txt immediately.
-    public class SettingsState : State
+    public class SettingsState : MenuListState
     {
-        enum Page { Options, Controls }
+        enum Page { Options, Controls, Controller }
 
-        class Row
-        {
-            public string Label;
-            public Func<string> Value = () => "";
-            public Action<int> Change;  // adjust left (-1) or right (+1); null if not adjustable
-            public Action Activate;     // Enter or click
-        }
-
-        Type nextState = null;
         Type returnState;
         Page page = Page.Options;
-        int selected = 0;
         bool editingName = false;
         GameAction? waitingForKey = null;
-        List<Row> rows = new List<Row>();
-        Texture2D texBlank;
-        SpriteFontBase uiFont, titleFont;
-
-        const int RowTop = 120;
-        const int LabelX = 170;
-        const int ValueCenterX = 720;
-        const int ArrowOffset = 130;
 
         ClientSettings Settings
         {
             get { return Game.Settings; }
         }
 
-        int RowHeight
+        protected override int RowHeight
         {
-            get { return page == Page.Options ? 38 : 32; }
+            get { return page == Page.Options ? 36 : 32; }
         }
 
+        protected override string Title
+        {
+            get { return page == Page.Options ? "OPTIONS" : page == Page.Controls ? "CONTROLS" : "CONTROLLER"; }
+        }
+
+        protected override bool Busy
+        {
+            get { return editingName || waitingForKey != null; }
+        }
+
+        protected override string Hint
+        {
+            get
+            {
+                if (editingName)
+                    return "TYPE YOUR NAME, THEN PRESS ENTER" + (InGame ? " (USED THE NEXT TIME YOU JOIN)" : "");
+                if (waitingForKey != null)
+                    return "PRESS THE NEW KEY, OR ESCAPE TO CANCEL";
+                return base.Hint;
+            }
+        }
+
+        // Opened from the game (directly or through its menu): stay connected.
         bool InGame
         {
-            get { return returnState == typeof(MainGameState); }
+            get { return returnState == typeof(MainGameState) || returnState == typeof(GameMenuState); }
         }
 
         public override void OnEnter(Type oldState)
         {
-            _SM.IsMouseVisible = true;
+            base.OnEnter(oldState);
             returnState = oldState ?? typeof(ServerBrowserState);
-            uiFont = Game.Assets.UiFont;
-            titleFont = Game.Assets.TitleFont;
-            texBlank = new Texture2D(_SM.GraphicsDevice, 1, 1);
-            texBlank.SetData(new[] { Color.White });
-            BuildRows();
-        }
-
-        public override void OnLeave(Type newState)
-        {
-            texBlank.Dispose();
+            Rebuild();
         }
 
         static string OnOff(bool value)
@@ -91,12 +85,7 @@ namespace Infiniminer.States
             return sizes.OrderBy(p => p.X * p.Y).ThenBy(p => p.X).ToList();
         }
 
-        static int Cycle(int index, int direction, int count)
-        {
-            return ((index + direction) % count + count) % count;
-        }
-
-        void BuildRows()
+        protected override void BuildRows()
         {
             rows = new List<Row>();
             if (page == Page.Options)
@@ -148,9 +137,21 @@ namespace Infiniminer.States
                 });
                 rows.Add(new Row
                 {
-                    Label = "INVERT MOUSE",
+                    Label = "CONTROLLER SENSITIVITY",
+                    Value = () => Settings.ControllerSensitivity.ToString(),
+                    Change = direction => { Settings.ControllerSensitivity = Math.Clamp(Settings.ControllerSensitivity + direction, ClientSettings.MinSensitivity, ClientSettings.MaxSensitivity); Changed(); },
+                });
+                rows.Add(new Row
+                {
+                    Label = "INVERT LOOK",
                     Value = () => OnOff(Settings.InvertY),
                     Change = direction => { Settings.InvertY = !Settings.InvertY; Changed(); },
+                });
+                rows.Add(new Row
+                {
+                    Label = "CONTROLLER VIBRATION",
+                    Value = () => OnOff(Settings.Vibration),
+                    Change = direction => { Settings.Vibration = !Settings.Vibration; Changed(); },
                 });
                 rows.Add(new Row
                 {
@@ -176,10 +177,11 @@ namespace Infiniminer.States
                     Value = () => OnOff(Settings.ShowFps),
                     Change = direction => { Settings.ShowFps = !Settings.ShowFps; Changed(); },
                 });
-                rows.Add(new Row { Label = "CONTROLS >", Activate = () => SwitchPage(Page.Controls) });
+                rows.Add(new Row { Label = "KEYBOARD CONTROLS >", Activate = () => SwitchPage(Page.Controls) });
+                rows.Add(new Row { Label = "CONTROLLER >", Activate = () => SwitchPage(Page.Controller) });
                 rows.Add(new Row { Label = "BACK", Activate = Back });
             }
-            else
+            else if (page == Page.Controls)
             {
                 foreach (GameAction action in Enum.GetValues<GameAction>())
                 {
@@ -198,7 +200,17 @@ namespace Infiniminer.States
                 });
                 rows.Add(new Row { Label = "< BACK", Activate = () => SwitchPage(Page.Options) });
             }
-            selected = Math.Clamp(selected, 0, rows.Count - 1);
+            else
+            {
+                // The controller layout is fixed; this page shows it.
+                foreach (var (control, action) in ControllerLayout.InGame)
+                {
+                    string button = control;
+                    rows.Add(new Row { Label = action, Value = () => button });
+                }
+                rows.Add(new Row { Label = "MENUS", Value = () => "D-PAD OR STICK, A, B" });
+                rows.Add(new Row { Label = "< BACK", Activate = () => SwitchPage(Page.Options) });
+            }
         }
 
         void SwitchPage(Page newPage)
@@ -206,7 +218,9 @@ namespace Infiniminer.States
             page = newPage;
             selected = 0;
             waitingForKey = null;
-            BuildRows();
+            Rebuild();
+            if (newPage == Page.Controller)
+                selected = rows.Count - 1;
             _P.PlaySound(InfiniminerSound.ClickHigh);
         }
 
@@ -219,8 +233,13 @@ namespace Infiniminer.States
             Changed();
         }
 
-        void Back()
+        protected override void Back()
         {
+            if (page != Page.Options)
+            {
+                SwitchPage(Page.Options);
+                return;
+            }
             if (editingName)
                 FinishNameEdit();
             Game.SaveSettings();
@@ -228,75 +247,12 @@ namespace Infiniminer.States
             nextState = returnState;
         }
 
-        int RowAt(Point menuPoint)
-        {
-            int index = (menuPoint.Y - RowTop + RowHeight / 4) / RowHeight;
-            if (menuPoint.Y < RowTop - RowHeight / 4 || index < 0 || index >= rows.Count || menuPoint.X < LabelX - 30 || menuPoint.X > 1024 - LabelX + 30)
-                return -1;
-            return index;
-        }
-
         public override Type OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
         {
             // Stay connected while the menu is open.
             if (InGame)
                 Game.UpdateNetwork(gameTime);
-
-            // Hovering selects a row.
-            if (!editingName && waitingForKey == null && _SM.WindowHasFocus())
-            {
-                int hovered = RowAt(Game.ToMenu(mouseState.X, mouseState.Y));
-                if (hovered >= 0)
-                    selected = hovered;
-            }
-
-            return nextState;
-        }
-
-        public override void OnRenderAtUpdate(GraphicsDevice graphicsDevice, GameTime gameTime)
-        {
-            SpriteBatch spriteBatch = _SM.SpriteBatch;
-            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, Game.MenuSampler, null, null, null, Game.MenuTransform);
-
-            string title = page == Page.Options ? "OPTIONS" : "CONTROLS";
-            Vector2 titleSize = titleFont.MeasureString(title);
-            spriteBatch.DrawString(titleFont, title, new Vector2((int)(InfiniminerGame.MenuWidth / 2 - titleSize.X / 2), 36), Color.White);
-
-            for (int i = 0; i < rows.Count; i++)
-            {
-                Row row = rows[i];
-                int y = RowTop + i * RowHeight;
-                bool isSelected = i == selected;
-                if (isSelected)
-                    spriteBatch.Draw(texBlank, new Rectangle(LabelX - 20, y - 8, 1024 - 2 * (LabelX - 20), RowHeight - 6), new Color(40, 40, 40));
-
-                Color color = isSelected ? Color.White : new Color(150, 150, 150);
-                spriteBatch.DrawString(uiFont, row.Label, new Vector2(LabelX, y), color);
-
-                string value = row.Value();
-                if (value != "")
-                {
-                    Vector2 valueSize = uiFont.MeasureString(value);
-                    spriteBatch.DrawString(uiFont, value, new Vector2((int)(ValueCenterX - valueSize.X / 2), y), isSelected ? InfiniminerGame.IM_BLUE : color);
-                }
-                if (row.Change != null)
-                {
-                    spriteBatch.DrawString(uiFont, "<", new Vector2(ValueCenterX - ArrowOffset, y), color);
-                    spriteBatch.DrawString(uiFont, ">", new Vector2(ValueCenterX + ArrowOffset - 8, y), color);
-                }
-            }
-
-            string hint;
-            if (editingName)
-                hint = "TYPE YOUR NAME, THEN PRESS ENTER" + (InGame ? " (USED THE NEXT TIME YOU JOIN)" : "");
-            else if (waitingForKey != null)
-                hint = "PRESS THE NEW KEY, OR ESCAPE TO CANCEL";
-            else
-                hint = "UP/DOWN: SELECT   LEFT/RIGHT: CHANGE   ENTER: CHOOSE   ESC: BACK";
-            Vector2 hintSize = uiFont.MeasureString(hint);
-            spriteBatch.DrawString(uiFont, hint, new Vector2((int)(InfiniminerGame.MenuWidth / 2 - hintSize.X / 2), 720), new Color(150, 150, 150));
-
-            spriteBatch.End();
+            return base.OnUpdate(gameTime, keyState, mouseState);
         }
 
         public override void OnTextInput(char character)
@@ -309,7 +265,8 @@ namespace Infiniminer.States
         {
             if (waitingForKey != null)
             {
-                if (key != Keys.Escape)
+                // A key binding needs a key: anything from the controller just cancels.
+                if (key != Keys.Escape && !_SM.UsingGamePad)
                 {
                     Settings.Bind(waitingForKey.Value, key);
                     Changed();
@@ -327,56 +284,7 @@ namespace Infiniminer.States
                 return;
             }
 
-            switch (key)
-            {
-                case Keys.Up:
-                    selected = Cycle(selected, -1, rows.Count);
-                    break;
-                case Keys.Down:
-                    selected = Cycle(selected, 1, rows.Count);
-                    break;
-                case Keys.Left:
-                    rows[selected].Change?.Invoke(-1);
-                    break;
-                case Keys.Right:
-                    rows[selected].Change?.Invoke(1);
-                    break;
-                case Keys.Enter:
-                case Keys.Space:
-                    if (rows[selected].Activate != null)
-                        rows[selected].Activate();
-                    else
-                        rows[selected].Change?.Invoke(1);
-                    break;
-                case Keys.Escape:
-                    if (page == Page.Controls)
-                        SwitchPage(Page.Options);
-                    else
-                        Back();
-                    break;
-            }
-        }
-
-        public override void OnMouseDown(MouseButton button, int x, int y)
-        {
-            if (waitingForKey != null || editingName)
-                return;
-
-            Point menuPoint = Game.ToMenu(x, y);
-            int index = RowAt(menuPoint);
-            if (index < 0)
-                return;
-            selected = index;
-            Row row = rows[index];
-
-            if (row.Change != null)
-            {
-                // Left of the value goes down, otherwise up; right-clicking also goes down.
-                bool decrease = button == MouseButton.RightButton || menuPoint.X < ValueCenterX - ArrowOffset / 2;
-                row.Change(decrease ? -1 : 1);
-            }
-            else
-                row.Activate?.Invoke();
+            base.OnKeyDown(key);
         }
     }
 }

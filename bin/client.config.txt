@@ -31,6 +31,10 @@ uiscale = 0
 # Colour-blind friendly team colours, and [R]/[B] tags on team chat.
 colorblind = false
 
+# Controller: right stick look speed from 1 to 20, and whether the controller vibrates.
+controllersensitivity = 10
+vibration = true
+
 # Key bindings (names from https://docs.monogame.net/api/Microsoft.Xna.Framework.Input.Keys.html).
 # These can also be changed in game: OPTIONS > CONTROLS.
 key_moveforward = W

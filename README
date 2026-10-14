@@ -67,9 +67,25 @@ behind a reverse proxy.
 CONFIGURATION
 =============
 
-Game settings can be changed in the OPTIONS menu (on the server browser, or Escape+O in game): name,
-resolution, fullscreen, interface scale, field of view, mouse sensitivity, invert mouse, volume, bloom,
-colour-blind mode, FPS counter and key bindings. The window can also be resized freely; menus scale to fit it.
+Game settings can be changed in the OPTIONS menu (on the server browser, or from the in-game menu): name,
+resolution, fullscreen, interface scale, field of view, mouse and controller sensitivity, invert look,
+controller vibration, volume, bloom, colour-blind mode, FPS counter and key bindings. The window can also be
+resized freely; menus scale to fit it. In game, Escape on its own opens a menu (resume, change team or
+class, options, respawn, leave server); Escape+Y, Escape+K and Escape+O still work as shortcuts.
+
+CONTROLLERS: Xbox, PlayStation, Switch Pro and most other controllers work (buttons are named after the
+Xbox ones; A is Cross on a PlayStation controller). Every menu works with the D-pad or left stick, A and B.
+In game:
+
+    Left stick   move                      Right stick  look
+    A            jump / respawn            RT           use tool (hold to dig)
+    RB, D-pad up/down     change tool      LB, D-pad left/right   change block
+    X            deposit ore (at a bank)   B            withdraw ore (at a bank)
+    Y            ping your team            Back (hold)  scoreboard
+    Start        menu
+
+Chat still needs a keyboard. On-screen prompts switch between keyboard and controller buttons depending on
+which you used last.
 
 Settings are saved in client.config.txt; the server reads server.config.txt and keeps banlist.txt and
 saved maps beside it. The defaults are in bin/ and are copied next to the executables on build. These

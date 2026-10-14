@@ -297,7 +297,11 @@ namespace Infiniminer
 
             // Draw bank instructions.
             if (_P.AtBankTerminal())
-                RenderMessageCenter(spriteBatch, ClientSettings.KeyName(gameInstance.Settings.Key(GameAction.DepositOre)) + ": DEPOSIT 50 ORE  " + ClientSettings.KeyName(gameInstance.Settings.Key(GameAction.WithdrawOre)) + ": WITHDRAW 50 ORE", new Vector2(ScreenWidth / 2, ScreenHeight / 2 + 60), Color.White, Color.Black);
+            {
+                string deposit = gameInstance.UsingGamePad ? "X" : ClientSettings.KeyName(gameInstance.Settings.Key(GameAction.DepositOre));
+                string withdraw = gameInstance.UsingGamePad ? "B" : ClientSettings.KeyName(gameInstance.Settings.Key(GameAction.WithdrawOre));
+                RenderMessageCenter(spriteBatch, deposit + ": DEPOSIT 50 ORE  " + withdraw + ": WITHDRAW 50 ORE", new Vector2(ScreenWidth / 2, ScreenHeight / 2 + 60), Color.White, Color.Black);
+            }
 
             // Are they trying to change class when they cannot?
             if (Keyboard.GetState().IsKeyDown(gameInstance.Settings.Key(GameAction.ChangeClass)) && _P.playerPosition.Y <= _P.SurfaceHeight && _P.chatMode == ChatMessageType.None)
@@ -325,7 +329,8 @@ namespace Infiniminer
             }
 
             // Draw player information.
-            if ((Keyboard.GetState().IsKeyDown(gameInstance.Settings.Key(GameAction.Scoreboard)) && _P.screenEffect == ScreenEffect.None) || _P.teamWinners != PlayerTeam.None)
+            bool scoreboardHeld = Keyboard.GetState().IsKeyDown(gameInstance.Settings.Key(GameAction.Scoreboard)) || gameInstance.GamePadInput.IsDown(Buttons.Back);
+            if ((scoreboardHeld && _P.screenEffect == ScreenEffect.None) || _P.teamWinners != PlayerTeam.None)
             {
                 spriteBatch.Draw(texBlank, new Rectangle(0, 0, ScreenWidth, ScreenHeight), new Color(Color.Black, 0.7f));
 
@@ -404,9 +409,10 @@ namespace Infiniminer
             // Draw escape message.
             if (Keyboard.GetState().IsKeyDown(Keys.Escape))
             {
-                RenderMessageCenter(spriteBatch, "PRESS Y TO CONFIRM THAT YOU WANT TO QUIT.", new Vector2(ScreenWidth / 2, ScreenHeight / 2 + 30), Color.White, Color.Black);
-                RenderMessageCenter(spriteBatch, "PRESS K TO COMMIT PIXELCIDE.", new Vector2(ScreenWidth / 2, ScreenHeight / 2 + 80), Color.White, Color.Black);
-                RenderMessageCenter(spriteBatch, "PRESS O FOR OPTIONS.", new Vector2(ScreenWidth / 2, ScreenHeight / 2 + 130), Color.White, Color.Black);
+                RenderMessageCenter(spriteBatch, "RELEASE ESCAPE FOR THE MENU, OR:", new Vector2(ScreenWidth / 2, ScreenHeight / 2 + 30), Color.White, Color.Black);
+                RenderMessageCenter(spriteBatch, "PRESS Y TO CONFIRM THAT YOU WANT TO QUIT.", new Vector2(ScreenWidth / 2, ScreenHeight / 2 + 80), Color.White, Color.Black);
+                RenderMessageCenter(spriteBatch, "PRESS K TO COMMIT PIXELCIDE.", new Vector2(ScreenWidth / 2, ScreenHeight / 2 + 130), Color.White, Color.Black);
+                RenderMessageCenter(spriteBatch, "PRESS O FOR OPTIONS.", new Vector2(ScreenWidth / 2, ScreenHeight / 2 + 180), Color.White, Color.Black);
             }
            
             // Draw the current screen effect.
@@ -415,7 +421,7 @@ namespace Infiniminer
                 Color drawColor = new Color(1 - (float)_P.screenEffectCounter * 0.5f, 0f, 0f);
                 spriteBatch.Draw(texBlank, new Rectangle(0, 0, ScreenWidth, ScreenHeight), drawColor);
                 if (_P.screenEffectCounter >= 2)
-                    RenderMessageCenter(spriteBatch, "You have died. Click to respawn.", new Vector2(ScreenWidth / 2, ScreenHeight/2), Color.White, Color.Black);
+                    RenderMessageCenter(spriteBatch, gameInstance.UsingGamePad ? "You have died. Press A to respawn." : "You have died. Click to respawn.", new Vector2(ScreenWidth / 2, ScreenHeight/2), Color.White, Color.Black);
             }
             if (_P.screenEffect == ScreenEffect.Teleport || _P.screenEffect == ScreenEffect.Explosion)
             {

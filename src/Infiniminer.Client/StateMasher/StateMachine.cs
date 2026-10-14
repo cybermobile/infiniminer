@@ -30,6 +30,17 @@ namespace StateMasher
         private HashSet<Keys> keysDown = new HashSet<Keys>();
         private MouseState msOld;
 
+        // The controller, and whether it (rather than the keyboard and mouse) was used last; on-screen
+        // prompts follow whichever the player is using.
+        public readonly Infiniminer.GamePadInput GamePadInput = CreateGamePadInput();
+        public bool UsingGamePad { get; private set; }
+
+        static Infiniminer.GamePadInput CreateGamePadInput()
+        {
+            Infiniminer.ScriptedGamePad scripted = Infiniminer.ScriptedGamePad.FromEnvironment();
+            return scripted != null ? new Infiniminer.GamePadInput(scripted.Read) : new Infiniminer.GamePadInput();
+        }
+
         public StateMachine()
         {
             graphicsDeviceManager = new GraphicsDeviceManager(this);
@@ -82,7 +93,10 @@ namespace StateMasher
                 {
                     foreach (Keys k in keysDownNow)
                         if (!keysDown.Contains(k))
+                        {
+                            UsingGamePad = false;
                             currentState.OnKeyDown(k);
+                        }
                     foreach (Keys k in keysDown)
                         if (!keysDownNow.Contains(k))
                             currentState.OnKeyUp(k);
@@ -93,6 +107,11 @@ namespace StateMasher
                 MouseState msNew = Mouse.GetState();
                 if (WindowHasFocus())
                 {
+                    bool clicked = (msOld.LeftButton == ButtonState.Released && msNew.LeftButton == ButtonState.Pressed)
+                        || (msOld.RightButton == ButtonState.Released && msNew.RightButton == ButtonState.Pressed);
+                    bool movedPointer = IsMouseVisible && (Math.Abs(msNew.X - msOld.X) > 3 || Math.Abs(msNew.Y - msOld.Y) > 3);
+                    if (clicked || movedPointer)
+                        UsingGamePad = false;
                     if (msOld.LeftButton == ButtonState.Released && msNew.LeftButton == ButtonState.Pressed)
                         currentState.OnMouseDown(MouseButton.LeftButton, msNew.X, msNew.Y);
                     if (msOld.MiddleButton == ButtonState.Released && msNew.MiddleButton == ButtonState.Pressed)
@@ -109,9 +128,40 @@ namespace StateMasher
                         currentState.OnMouseScroll(msNew.ScrollWheelValue - msOld.ScrollWheelValue);
                 }
                 msOld = msNew;
+
+                UpdateGamePad(gameTime);
             }
 
             base.Update(gameTime);
+        }
+
+        void UpdateGamePad(GameTime gameTime)
+        {
+            GamePadInput.Update(gameTime.ElapsedGameTime.TotalSeconds);
+            if (!WindowHasFocus())
+                return;
+            if (GamePadInput.HadInput)
+                UsingGamePad = true;
+
+            // In menus the controller drives the keyboard controls: the D-pad or left stick are the arrow
+            // keys, A is Enter and B is Escape.
+            if (currentState.UsesMenuNavigation)
+            {
+                foreach (Infiniminer.MenuDirection direction in GamePadInput.Navigation)
+                    currentState.OnKeyDown(direction switch
+                    {
+                        Infiniminer.MenuDirection.Up => Keys.Up,
+                        Infiniminer.MenuDirection.Down => Keys.Down,
+                        Infiniminer.MenuDirection.Left => Keys.Left,
+                        _ => Keys.Right,
+                    });
+                if (GamePadInput.WasPressed(Buttons.A))
+                    currentState.OnKeyDown(Keys.Enter);
+                if (GamePadInput.WasPressed(Buttons.B))
+                    currentState.OnKeyDown(Keys.Escape);
+            }
+            foreach (Buttons button in GamePadInput.Pressed)
+                currentState.OnGamePadButtonDown(button);
         }
 
         protected override void Draw(GameTime gameTime)
