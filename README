@@ -25,7 +25,9 @@ game (pick the world size, player limit, time limit and so on), and players on y
 their server list. The in-game menu's END GAME stops it. A dedicated server is still the way to run a game
 that outlives your session.
 
-The client finds servers on your LAN automatically. Use [ DIRECT CONNECT ] for anything else; it accepts
+The client finds servers on your LAN automatically, and lists the last five servers you joined (so a
+server joined by address is one click away next time). When a match ends and the server restarts with a
+new map, the game rejoins it by itself. Use [ DIRECT CONNECT ] for anything else; it accepts
 an IP address or host name, optionally followed by ":port".
 
 To build release packages (self-contained: players don't need .NET installed) into dist/:

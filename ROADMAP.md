@@ -72,6 +72,7 @@ The original server trusted almost everything the client said.
       controller sensitivity and vibration options, and a controller layout page
 - [x] Host a game from the client: HOST A GAME in the server list runs a server inside the game (world size,
       players, time limit, lava, home bases, sandbox), LAN players find it as usual, END GAME stops it
-- [ ] Recent servers in the server browser, and reconnecting to the last one
+- [x] Recent servers in the server list (the last five joined), and rejoining automatically when a server
+      restarts with a new map after a match
 - [ ] Move the local player's fields out of `PropertyBag` into their own class
 - [ ] Linux AppImage

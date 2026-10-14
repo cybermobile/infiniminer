@@ -194,6 +194,7 @@ namespace Infiniminer
         // Leaves the current server; if it is the one we host, that ends the game for everyone.
         public void LeaveServer()
         {
+            Rejoin.Cancel();
             propertyBag.serverPeer?.Disconnect();
             if (IsHosting && HostedServer.Ready && HostedServer.EndPoint.Equals(CurrentServer))
                 StopHostedServer();
@@ -201,9 +202,33 @@ namespace Infiniminer
 
         // The server we joined last.
         public IPEndPoint CurrentServer { get; private set; }
+        (string address, string name)? joiningRecent;
 
-        public void JoinGame(IPEndPoint serverEndPoint)
+        // Rejoins the server when it restarts after a match.
+        public readonly AutoRejoin Rejoin = new AutoRejoin();
+
+        double Now
         {
+            get { return currentGameTime.TotalGameTime.TotalSeconds; }
+        }
+
+        // The map has arrived: we're in.
+        public void OnJoined()
+        {
+            Rejoin.Cancel();
+            bool ownGame = IsHosting && CurrentServer != null && CurrentServer.Port == HostedServer.Port;
+            if (joiningRecent != null && !ownGame)
+            {
+                Settings.AddRecentServer(joiningRecent.Value.address, joiningRecent.Value.name);
+                SaveSettings();
+            }
+            joiningRecent = null;
+        }
+
+        // `address` and `name` are remembered in the recent servers list once we're in.
+        public void JoinGame(IPEndPoint serverEndPoint, string address = null, string name = null)
+        {
+            joiningRecent = address != null ? (address, name ?? address) : null;
             // Clear out the map load progress indicator.
             propertyBag.mapLoadProgress = new bool[64, 64];
             propertyBag.downloadComplete = false;
@@ -316,9 +341,24 @@ namespace Infiniminer
                     StatusMessage = "ERROR: THE SERVER REJECTED THE CONNECTION.";
             }
             else if (disconnectInfo.Reason == DisconnectReason.ConnectionFailed || disconnectInfo.Reason == DisconnectReason.HostUnreachable || disconnectInfo.Reason == DisconnectReason.UnknownHost)
-                StatusMessage = "ERROR: COULD NOT CONNECT TO THE SERVER.";
+            {
+                // While rejoining a restarting server, failing to connect just means it isn't back yet.
+                if (Rejoin.Active)
+                    StatusMessage = Rejoin.AttemptFailed(Now) ? "REJOINING THE SERVER..." : "ERROR: COULD NOT REJOIN THE SERVER.";
+                else
+                    StatusMessage = "ERROR: COULD NOT CONNECT TO THE SERVER.";
+            }
             else if (disconnectInfo.Reason != DisconnectReason.DisconnectPeerCalled)
+            {
                 StatusMessage = reason != "" ? "DISCONNECTED: " + Sanitize(reason).ToUpperInvariant() : "DISCONNECTED FROM THE SERVER.";
+                if (reason == AutoRejoin.RestartReason && CurrentServer != null)
+                {
+                    Rejoin.Begin(CurrentServer, Now);
+                    StatusMessage = "THE SERVER IS STARTING A NEW MAP. REJOINING...";
+                }
+            }
+            if (disconnectInfo.Reason == DisconnectReason.ConnectionRejected)
+                Rejoin.Cancel();
 
             deferredState = typeof(States.ServerBrowserState);
         }

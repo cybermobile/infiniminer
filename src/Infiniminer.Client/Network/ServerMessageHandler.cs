@@ -63,6 +63,7 @@ namespace Infiniminer
                         if (downloadComplete && !_P.downloadComplete)
                         {
                             _P.downloadComplete = true;
+                            game.OnJoined();
                             if (game.CurrentStateType == typeof(States.LoadingState))
                                 game.ChangeStateAfterNetworkUpdate(typeof(States.TeamSelectionState));
                             game.TitleMusic.Stop();

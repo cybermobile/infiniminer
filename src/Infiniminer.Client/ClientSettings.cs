@@ -45,6 +45,10 @@ namespace Infiniminer
         public bool Vibration = true;
         public string ServerListUrl = "";
 
+        // Servers joined recently, newest first: the address as typed or listed ("host:port") and a name.
+        public List<(string Address, string Name)> RecentServers = new List<(string, string)>();
+        public const int MaxRecentServers = 5;
+
         // HOST GAME settings (the server name defaults to "<handle>'S GAME").
         public string HostName = "";
         public int HostMapSize = GameConstants.MapSize;
@@ -80,6 +84,19 @@ namespace Infiniminer
                 [GameAction.DepositOre] = Keys.D1,
                 [GameAction.WithdrawOre] = Keys.D2,
             };
+        }
+
+        // Remembers a server we joined; it moves to the top of the list.
+        public void AddRecentServer(string address, string name)
+        {
+            address = TextUtil.Sanitize(address).Replace("|", "").Trim();
+            name = TextUtil.Sanitize(name).Replace("|", "").Trim();
+            if (address == "")
+                return;
+            RecentServers.RemoveAll(r => string.Equals(r.Address, address, StringComparison.OrdinalIgnoreCase));
+            RecentServers.Insert(0, (address, name == "" ? address : name));
+            if (RecentServers.Count > MaxRecentServers)
+                RecentServers.RemoveRange(MaxRecentServers, RecentServers.Count - MaxRecentServers);
         }
 
         public string HostServerName
@@ -148,6 +165,12 @@ namespace Infiniminer
             settings.ControllerSensitivity = Math.Clamp(dataFile.GetInt("controllersensitivity", settings.ControllerSensitivity), MinSensitivity, MaxSensitivity);
             settings.Vibration = dataFile.GetBool("vibration", settings.Vibration);
             settings.ServerListUrl = dataFile.GetString("serverlist", settings.ServerListUrl);
+            for (int i = MaxRecentServers; i >= 1; i--)
+            {
+                string[] recent = dataFile.GetString("recent" + i, "").Split('|', 2);
+                if (recent[0].Trim() != "")
+                    settings.AddRecentServer(recent[0].Trim(), recent.Length > 1 ? recent[1].Trim() : recent[0].Trim());
+            }
             settings.HostName = dataFile.GetString("host_name", settings.HostName);
             int mapSize = dataFile.GetInt("host_mapsize", settings.HostMapSize);
             settings.HostMapSize = GameConstants.MapSizes.Contains(mapSize) ? mapSize : GameConstants.MapSize;
@@ -204,6 +227,10 @@ namespace Infiniminer
             Line("# Public server list to show in the server browser (LAN servers are always found automatically).");
             Line("# Example: serverlist = http://example.com/plain");
             Line("serverlist = " + ServerListUrl);
+            Line();
+            Line("# Servers joined recently (address | name), shown in the server list.");
+            for (int i = 0; i < RecentServers.Count; i++)
+                Line("recent" + (i + 1) + " = " + RecentServers[i].Address + " | " + RecentServers[i].Name);
             Line();
             Line("# The last settings used for HOST GAME.");
             Line("host_name = " + HostName);
