@@ -8,7 +8,7 @@ using LiteNetLib.Utils;
 
 namespace Infiniminer
 {
-    public class InfiniminerServer
+    public class InfiniminerServer : IBotWorld
     {
         NetManager netServer = null;
         EventBasedNetListener listener = null;
@@ -56,6 +56,11 @@ namespace Infiniminer
 
         // Store the last time that we did a flow calculation.
         DateTime lastFlowCalc = DateTime.Now;
+        DateTime lastBotUpdate = DateTime.Now;
+        readonly List<ServerBot> bots = new List<ServerBot>();
+        bool balancingBots = false;
+        static readonly string[] BotNames = { "DIGBY", "NUGGET", "PEBBLES", "FLINT", "DUSTY", "GARNET", "COAL", "ROCKY",
+                                              "QUARTZ", "SHALE", "COBALT", "JASPER", "TOPAZ", "GRAVEL", "OPAL", "SLATE" };
 
         uint duplicateNameCount = 0;
 
@@ -105,6 +110,8 @@ namespace Infiniminer
                 extraInfo += string.Format(CultureInfo.InvariantCulture, "{0:#.##k}", config.WinningCashAmount / 1000);
             if (!config.IncludeLava)
                 extraInfo += ", !lava";
+            if (bots.Count > 0)
+                extraInfo += ", " + bots.Count + (bots.Count == 1 ? " bot" : " bots");
             return extraInfo;
         }
 
@@ -259,6 +266,12 @@ namespace Infiniminer
                 ConsoleWrite("ERROR: no player with that name or IP");
             foreach (ServerPlayer p in playersToKick)
             {
+                ServerBot bot = bots.FirstOrDefault(b => b.Player == p);
+                if (bot != null)
+                {
+                    RemoveBot(bot);
+                    continue;
+                }
                 p.Kicked = true;
                 p.Peer.Disconnect(NetExtensions.StringPayload("You were kicked from the server."));
             }
@@ -295,6 +308,7 @@ namespace Infiniminer
                         ConsoleWrite(" ban <ip or name>");
                         ConsoleWrite(" unban <ip>");
                         ConsoleWrite(" say <message>");
+                        ConsoleWrite(" bots <count>");
                         ConsoleWrite(" tp <player name> <x> <y> <z>");
                         ConsoleWrite(" save <mapfile>");
                         ConsoleWrite(" load <mapfile>");
@@ -360,6 +374,15 @@ namespace Infiniminer
                 case "quit":
                     {
                         keepRunning = false;
+                    }
+                    break;
+
+                case "bots":
+                    {
+                        if (args.Length == 2 && int.TryParse(args[1], out int botCount) && botCount >= 0 && botCount <= 16)
+                            SetBotCount(botCount);
+                        else
+                            ConsoleWrite("bots <count from 0 to 16>; there are " + bots.Count + " now");
                     }
                     break;
 
@@ -662,6 +685,7 @@ namespace Infiniminer
             PublicServerListUpdate();
 
             lastFlowCalc = DateTime.Now;
+            SetBotCount(config.Bots);
             if (config.TimeLimitMinutes > 0)
                 matchEndTime = Now + config.TimeLimitMinutes * 60;
             ConsoleWrite("SERVER READY");
@@ -699,6 +723,11 @@ namespace Infiniminer
 
             // Process any messages that are here.
             netServer.PollEvents();
+
+            // Computer players.
+            DateTime botTime = DateTime.Now;
+            UpdateBots((float)Math.Min(0.25, (botTime - lastBotUpdate).TotalSeconds));
+            lastBotUpdate = botTime;
 
             // Lava, shock blocks and the void are lethal whether or not the client admits it.
             foreach (ServerPlayer p in playerList.Values.ToList())
@@ -792,10 +821,13 @@ namespace Infiniminer
                 request.Reject(NetExtensions.StringPayload("VER;" + GameConstants.Version));
             else if (banList.Contains(ip))
                 request.Reject(NetExtensions.StringPayload("BAN;"));
-            else if (playerList.Count >= config.MaxPlayers)
+            else if (playerList.Count - bots.Count >= config.MaxPlayers)
                 request.Reject(NetExtensions.StringPayload("FULL;"));
             else
             {
+                // A bot makes way for a person.
+                if (playerList.Count >= config.MaxPlayers && bots.Count > 0)
+                    RemoveBot(bots[bots.Count - 1]);
                 NetPeer peer = request.Accept();
                 ServerPlayer newPlayer = new ServerPlayer(peer, ip);
                 newPlayer.Handle = handle;
@@ -823,6 +855,7 @@ namespace Infiniminer
             ConsoleWrite("DISCONNECT: " + player.Handle);
             playerList.Remove(peer.Id);
             SendPlayerLeft(player, player.Kicked ? "WAS KICKED FROM THE GAME!" : "HAS ABANDONED THEIR DUTIES!");
+            BalanceBots();
             SendMatchInfo(null);
             PublicServerListUpdate();
         }
@@ -960,32 +993,7 @@ namespace Infiniminer
                         if (!Enum.IsDefined(playerClass))
                             break;
 
-                        // Changing class is only possible while dead (the client kills you first).
-                        if (player.Alive)
-                            KillPlayer(player, "");
-
-                        ConsoleWrite("SELECT_CLASS: " + player.Handle + ", " + playerClass.ToString());
-                        player.SetClass(playerClass);
-                        switch (playerClass)
-                        {
-                            case PlayerClass.Engineer:
-                                player.OreMax = 350;
-                                player.WeightMax = 4;
-                                break;
-                            case PlayerClass.Miner:
-                                player.OreMax = 200;
-                                player.WeightMax = 8;
-                                break;
-                            case PlayerClass.Prospector:
-                                player.OreMax = 200;
-                                player.WeightMax = 4;
-                                break;
-                            case PlayerClass.Sapper:
-                                player.OreMax = 200;
-                                player.WeightMax = 4;
-                                break;
-                        }
-                        SendResourceUpdate(player);
+                        ChooseClass(player, playerClass);
                     }
                     break;
 
@@ -995,30 +1003,7 @@ namespace Infiniminer
                         if (playerTeam != PlayerTeam.Red && playerTeam != PlayerTeam.Blue)
                             break;
 
-                        // With auto-balance on, nobody can join a team that already has more players.
-                        if (config.AutoBalance)
-                        {
-                            PlayerTeam otherTeam = playerTeam == PlayerTeam.Red ? PlayerTeam.Blue : PlayerTeam.Red;
-                            int requested = playerList.Values.Count(p => p != player && p.Team == playerTeam);
-                            int other = playerList.Values.Count(p => p != player && p.Team == otherTeam);
-                            if (requested > other)
-                            {
-                                playerTeam = otherTeam;
-                                NetDataWriter notice = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
-                                notice.Put((byte)ChatMessageType.SayAll);
-                                notice.Put("SERVER: THE TEAMS ARE UNEVEN, SO YOU HAVE JOINED THE " + GetTeamName(playerTeam) + " TEAM.");
-                                player.Peer.Send(notice, NetChannel.ReliableInOrder3);
-                            }
-                        }
-
-                        // Switching teams while alive would let you carry loot to the other side.
-                        if (player.Alive)
-                            KillPlayer(player, "");
-
-                        ConsoleWrite("SELECT_TEAM: " + player.Handle + ", " + playerTeam.ToString());
-                        player.Team = playerTeam;
-                        SendResourceUpdate(player);
-                        SendPlayerSetTeam(player);
+                        ChooseTeam(player, playerTeam);
                     }
                     break;
 
@@ -1195,6 +1180,170 @@ namespace Infiniminer
             msgBuffer.Put(player.PositionEpoch);
             msgBuffer.Put((byte)reason);
             player.Peer.Send(msgBuffer, NetChannel.ReliableInOrder2);
+        }
+
+        public void ChooseClass(ServerPlayer player, PlayerClass playerClass)
+        {
+            // Changing class is only possible while dead (the client kills you first).
+            if (player.Alive)
+                KillPlayer(player, "");
+
+            ConsoleWrite("SELECT_CLASS: " + player.Handle + ", " + playerClass.ToString());
+            player.SetClass(playerClass);
+            switch (playerClass)
+            {
+                case PlayerClass.Engineer:
+                    player.OreMax = 350;
+                    player.WeightMax = 4;
+                    break;
+                case PlayerClass.Miner:
+                    player.OreMax = 200;
+                    player.WeightMax = 8;
+                    break;
+                case PlayerClass.Prospector:
+                    player.OreMax = 200;
+                    player.WeightMax = 4;
+                    break;
+                case PlayerClass.Sapper:
+                    player.OreMax = 200;
+                    player.WeightMax = 4;
+                    break;
+            }
+            SendResourceUpdate(player);
+        }
+
+        public void ChooseTeam(ServerPlayer player, PlayerTeam playerTeam)
+        {
+            // With auto-balance on, nobody can join a team that already has more players.
+            if (config.AutoBalance)
+            {
+                PlayerTeam otherTeam = playerTeam == PlayerTeam.Red ? PlayerTeam.Blue : PlayerTeam.Red;
+                int requested = playerList.Values.Count(p => p != player && p.Team == playerTeam);
+                int other = playerList.Values.Count(p => p != player && p.Team == otherTeam);
+                if (requested > other)
+                {
+                    playerTeam = otherTeam;
+                    NetDataWriter notice = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
+                    notice.Put((byte)ChatMessageType.SayAll);
+                    notice.Put("SERVER: THE TEAMS ARE UNEVEN, SO YOU HAVE JOINED THE " + GetTeamName(playerTeam) + " TEAM.");
+                    player.Peer.Send(notice, NetChannel.ReliableInOrder3);
+                }
+            }
+
+            // Switching teams while alive would let you carry loot to the other side.
+            if (player.Alive)
+                KillPlayer(player, "");
+
+            ConsoleWrite("SELECT_TEAM: " + player.Handle + ", " + playerTeam.ToString());
+            player.Team = playerTeam;
+            SendResourceUpdate(player);
+            SendPlayerSetTeam(player);
+            BalanceBots();
+        }
+
+        public IReadOnlyList<ServerBot> Bots
+        {
+            get { return bots; }
+        }
+
+        // Adds or sends home computer players until there are `count` of them.
+        public void SetBotCount(int count)
+        {
+            while (bots.Count < count)
+                AddBot();
+            while (bots.Count > count)
+                RemoveBot(bots[bots.Count - 1]);
+        }
+
+        void AddBot()
+        {
+            string name = BotNames.FirstOrDefault(n => !playerList.Values.Any(p => p.Handle == "BOT " + n)) ?? "BOT " + bots.Count;
+            ServerPlayer player = new ServerPlayer(null, "bot") { Handle = name.StartsWith("BOT ") ? name : "BOT " + name };
+            playerList[-(int)player.ID] = player;
+            ServerBot bot = new ServerBot(player, this, randGen.Next());
+            bots.Add(bot);
+            ConsoleWrite("BOT JOINED: " + player.Handle);
+            SendPlayerJoined(player);
+
+            int red = playerList.Values.Count(p => p != player && p.Team == PlayerTeam.Red);
+            int blue = playerList.Values.Count(p => p != player && p.Team == PlayerTeam.Blue);
+            ChooseTeam(player, red <= blue ? PlayerTeam.Red : PlayerTeam.Blue);
+            ChooseClass(player, PlayerClass.Miner);
+            SendMatchInfo(null);
+        }
+
+        void RemoveBot(ServerBot bot)
+        {
+            bots.Remove(bot);
+            playerList.Remove(-(int)bot.Player.ID);
+            ConsoleWrite("BOT LEFT: " + bot.Player.Handle);
+            SendPlayerLeft(bot.Player, "WAS SENT HOME.");
+            SendMatchInfo(null);
+        }
+
+        // Keeps the teams even by moving bots (never people) from the bigger team.
+        void BalanceBots()
+        {
+            if (balancingBots)
+                return;
+            balancingBots = true;
+            try
+            {
+                while (true)
+                {
+                    int red = playerList.Values.Count(p => p.Team == PlayerTeam.Red);
+                    int blue = playerList.Values.Count(p => p.Team == PlayerTeam.Blue);
+                    if (Math.Abs(red - blue) < 2)
+                        break;
+                    PlayerTeam bigger = red > blue ? PlayerTeam.Red : PlayerTeam.Blue;
+                    ServerBot bot = bots.LastOrDefault(b => b.Player.Team == bigger);
+                    if (bot == null)
+                        break;
+                    ChooseTeam(bot.Player, bigger == PlayerTeam.Red ? PlayerTeam.Blue : PlayerTeam.Red);
+                }
+            }
+            finally
+            {
+                balancingBots = false;
+            }
+        }
+
+        public void UpdateBots(float elapsedSeconds)
+        {
+            foreach (ServerBot bot in bots.ToList())
+                bot.Update(elapsedSeconds);
+        }
+
+        int IBotWorld.MapSize
+        {
+            get { return MAPSIZE; }
+        }
+
+        BlockType IBotWorld.BlockAt(int x, int y, int z)
+        {
+            if (x < 0 || y < 0 || z < 0 || x >= MAPSIZE || y >= MAPSIZE || z >= MAPSIZE)
+                return y >= MAPSIZE ? BlockType.None : BlockType.Metal;
+            return blockList[x, y, z];
+        }
+
+        void IBotWorld.Dig(ServerPlayer bot, int x, int y, int z)
+        {
+            DigBlock(bot, x, y, z, false);
+        }
+
+        void IBotWorld.Moved(ServerPlayer bot)
+        {
+            SendPlayerUpdate(bot);
+        }
+
+        void IBotWorld.Respawn(ServerPlayer bot)
+        {
+            RespawnPlayer(bot);
+        }
+
+        void IBotWorld.Kill(ServerPlayer bot, string deathMessage)
+        {
+            KillPlayer(bot, deathMessage);
         }
 
         public void KillPlayer(ServerPlayer player, string deathMessage)
@@ -1453,12 +1602,16 @@ namespace Infiniminer
             Vector3 buildPoint = Vector3.Zero;
             if (!RayCollision(playerPosition, playerHeading, 2, 10, ref hitPoint, ref buildPoint))
                 return;
-            int x = GameConstants.ToBlock(hitPoint.X);
-            int y = GameConstants.ToBlock(hitPoint.Y);
-            int z = GameConstants.ToBlock(hitPoint.Z);
+            DigBlock(player, GameConstants.ToBlock(hitPoint.X), GameConstants.ToBlock(hitPoint.Y), GameConstants.ToBlock(hitPoint.Z), drill);
+        }
 
+        // Digs one block for a player: what it gives and whether it goes follow GameRules.Dig.
+        public void DigBlock(ServerPlayer player, int x, int y, int z, bool drill)
+        {
+            if (!InBounds(x, y, z))
+                return;
             // Figure out what the result is.
-            DigResult dig = GameRules.Dig(BlockAtPoint(hitPoint), drill);
+            DigResult dig = GameRules.Dig(blockList[x, y, z], drill);
             bool removeBlock = dig.Removes;
             uint giveOre = dig.Ore;
             uint giveCash = dig.Cash;

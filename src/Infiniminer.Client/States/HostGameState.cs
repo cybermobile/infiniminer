@@ -96,6 +96,12 @@ namespace Infiniminer.States
                 },
                 new Row
                 {
+                    Label = "COMPUTER PLAYERS",
+                    Value = () => Settings.HostBots == 0 ? "NONE" : Settings.HostBots.ToString(),
+                    Change = direction => { Settings.HostBots = Math.Clamp(Settings.HostBots + direction, 0, 8); Changed(); },
+                },
+                new Row
+                {
                     Label = "TIME LIMIT",
                     Value = () => Settings.HostTimeLimit == 0 ? "NONE" : Settings.HostTimeLimit + " MINUTES",
                     Change = direction =>

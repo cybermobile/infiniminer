@@ -122,7 +122,12 @@ redistributed here (http://www.dsg4.com/04/extra/bitmap/). The game ships with t
 Silkscreen font (SIL Open Font License). To use the originals, put 04B_08__.TTF and 04B_03B_.TTF in
 src/Infiniminer.Client/Fonts/ (or Content/fonts/ next to the built game).
 
-Server console commands: help, players, kick <ip or name>, ban <ip or name>, unban <ip>, say <message>,
+Computer players: "bots = <count>" in server.config.txt, the "bots <count>" console command, or COMPUTER
+PLAYERS in HOST GAME. Bots are miners: they dig down, tunnel for gold and diamonds, and climb back to the
+surface to bank it, under the same rules as everyone else. They keep the teams even and leave to make room
+when a person joins a full server.
+
+Server console commands: help, players, bots <count>, kick <ip or name>, ban <ip or name>, unban <ip>, say <message>,
 tp <player> <x> <y> <z>, save <file>, load <file>, restart, quit. "load" sends the new map to everyone.
 With "adminpassword" set, players can type "/login <password>" in chat and then run the same commands from
 chat (e.g. "/kick Griefer"). The server reads commands from standard input, so it also runs headless (e.g. under

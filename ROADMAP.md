@@ -80,7 +80,8 @@ The original server trusted almost everything the client said.
 ## 10. After that
 - [x] Automated play test in CI (`tests/e2e/smoke.sh`): the real game and server under a virtual display,
       driven by a scripted controller, with a screenshot of every step; `--connect <address>` and trace output
-- [ ] Computer players, so a hosted game isn't empty
+- [x] Computer players (`bots` setting and command, COMPUTER PLAYERS in HOST GAME): miners that dig, tunnel for
+      treasure and bank it, keep teams even and make room for people
 - [ ] Internet play for hosted games (UPnP port mapping)
 - [ ] Quick chat with a controller
 - [ ] Polish: keep team and class after rejoining, softer clouds, team screen artwork

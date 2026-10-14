@@ -48,3 +48,7 @@ mapsize = 64
 # Players who type "/login <password>" in chat can run any console command from chat (e.g. /kick Name).
 # Leave empty to disable remote admin.
 adminpassword = 
+
+# Computer players (0 to 16). They mine for their team, keep the teams even, and leave to make room
+# when people join a full server. Change it while running with the "bots <count>" console command.
+bots = 0

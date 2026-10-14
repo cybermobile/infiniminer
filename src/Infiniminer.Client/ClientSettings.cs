@@ -57,6 +57,7 @@ namespace Infiniminer
         public bool HostLava = true;
         public bool HostHomeBases = true;
         public bool HostSandbox = false;
+        public int HostBots = 2;            // computer players
         public Dictionary<GameAction, Keys> KeyBindings = DefaultKeyBindings();
 
         public const int MinSensitivity = 1, MaxSensitivity = 20;
@@ -117,6 +118,7 @@ namespace Infiniminer
                 HomeBases = HostHomeBases,
                 SandboxMode = HostSandbox,
                 AutoBalance = true,
+                Bots = HostBots,
             };
         }
 
@@ -179,6 +181,7 @@ namespace Infiniminer
             settings.HostLava = dataFile.GetBool("host_lava", settings.HostLava);
             settings.HostHomeBases = dataFile.GetBool("host_homebases", settings.HostHomeBases);
             settings.HostSandbox = dataFile.GetBool("host_sandbox", settings.HostSandbox);
+            settings.HostBots = Math.Clamp(dataFile.GetInt("host_bots", settings.HostBots), 0, 16);
             foreach (GameAction action in Enum.GetValues<GameAction>())
                 if (Enum.TryParse(dataFile.GetString(ConfigKey(action), ""), true, out Keys key) && key != Keys.None)
                     settings.Bind(action, key);
@@ -240,6 +243,7 @@ namespace Infiniminer
             Line("host_lava = " + Bool(HostLava));
             Line("host_homebases = " + Bool(HostHomeBases));
             Line("host_sandbox = " + Bool(HostSandbox));
+            Line("host_bots = " + HostBots.ToString(CultureInfo.InvariantCulture));
             Line();
             Line("# Key bindings (names from https://docs.monogame.net/api/Microsoft.Xna.Framework.Input.Keys.html).");
             foreach (GameAction action in Enum.GetValues<GameAction>())
