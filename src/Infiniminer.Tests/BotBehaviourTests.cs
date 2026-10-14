@@ -71,7 +71,7 @@ namespace Infiniminer.Tests
 
             public bool AtOwnBank(ServerPlayer bot)
             {
-                return FindOwnBank(bot) is (int x, int y, int z)
+                return FindBank(bot.Team) is (int x, int y, int z)
                     && Vector3.Distance(new Vector3(x + 0.5f, y + 0.5f, z + 0.5f), bot.Position) <= 3.5f;
             }
 
@@ -82,12 +82,14 @@ namespace Infiniminer.Tests
                 OreDeposited += amount;
             }
 
-            public (int x, int y, int z)? FindOwnBank(ServerPlayer bot)
+            public (int x, int y, int z)? FindBank(PlayerTeam team)
             {
-                BlockType bank = bot.Team == PlayerTeam.Red ? BlockType.BankRed : BlockType.BankBlue;
-                foreach (var b in Built)
-                    if (b.type == bank)
-                        return (b.x, b.y, b.z);
+                BlockType bank = team == PlayerTeam.Red ? BlockType.BankRed : BlockType.BankBlue;
+                for (int x = 0; x < MapSize; x++)
+                    for (int y = 0; y < MapSize; y++)
+                        for (int z = 0; z < MapSize; z++)
+                            if (Blocks[x, y, z] == bank)
+                                return (x, y, z);
                 return null;
             }
 
@@ -104,9 +106,9 @@ namespace Infiniminer.Tests
             }
         }
 
-        static ServerBot MakeBot(FakeWorld world, PlayerClass playerClass, int x, int y, int z, uint ore)
+        static ServerBot MakeBot(FakeWorld world, PlayerClass playerClass, int x, int y, int z, uint ore, PlayerTeam team = PlayerTeam.Red)
         {
-            ServerPlayer player = new ServerPlayer(null, "bot") { Team = PlayerTeam.Red, Alive = true, OreMax = 350, WeightMax = 4, Ore = ore };
+            ServerPlayer player = new ServerPlayer(null, "bot") { Team = team, Alive = true, OreMax = 350, WeightMax = 4, Ore = ore };
             player.SetClass(playerClass);
             player.Position = new Vector3(x + 0.5f, y + 1.45f, z + 0.5f);
             return new ServerBot(player, world, 1);
@@ -115,6 +117,13 @@ namespace Infiniminer.Tests
         static void Run(ServerBot bot, float seconds)
         {
             for (float t = 0; t < seconds && bot.Player.Alive; t += 0.05f)
+                bot.Update(0.05f);
+        }
+
+        // Runs while the bot is still at something (at most `seconds`).
+        static void RunWhile(ServerBot bot, Func<bool> busy, float seconds)
+        {
+            for (float t = 0; t < seconds && bot.Player.Alive && busy(); t += 0.05f)
                 bot.Update(0.05f);
         }
 
@@ -187,8 +196,88 @@ namespace Infiniminer.Tests
 
             Assert.Equal(1, engineer.BanksBuilt);
             Assert.Contains(world.Built, b => b.type == BlockType.BankRed);
-            Assert.Equal(150u, world.OreDeposited);     // 200 less the bank's 50
-            Assert.Equal(150u, engineer.OreDeposited);
+            // 200 less the bank's 50; half of the rest goes on three force fields round it, the rest in the bank.
+            Assert.Equal(3, engineer.DefencesBuilt);
+            Assert.Equal(75u, world.OreDeposited);
+            Assert.Equal(75u, engineer.OreDeposited);
+        }
+
+        [Fact]
+        public void EngineersFenceTheBankInWithForceFields()
+        {
+            FakeWorld world = new FakeWorld(32, BlockType.Dirt);
+            world.Carve(2, 29, 25, 30, 2, 29);
+            world.Blocks[15, 25, 15] = BlockType.BankRed;
+            var ring = ServerBot.DefenceRing((15, 25, 15)).ToHashSet();
+            Assert.Equal(32, ring.Count);
+
+            // Each trip home spends half its ore on the fence until it is finished; then it all goes in the bank.
+            ServerBot engineer = MakeBot(world, PlayerClass.Engineer, 14, 25, 15, ore: 300);
+            void Trip(uint ore)
+            {
+                engineer.Player.Ore = ore;
+                engineer.Player.Position = new Vector3(14.5f, 26.45f, 15.5f);
+                engineer.HeadForBank();
+                RunWhile(engineer, () => engineer.HeadingForBank, 30);
+                Assert.True(engineer.Player.Alive && !engineer.HeadingForBank, "the trip should have finished: " + engineer.Describe());
+            }
+            Trip(300);
+            Assert.Equal(6, engineer.DefencesBuilt);
+            Assert.Equal(150u, world.OreDeposited);
+            Assert.All(world.Built, b => Assert.Contains((b.x, b.y, b.z), ring));
+            Assert.All(world.Built, b => Assert.Equal(BlockType.TransRed, b.type));
+
+            for (int trip = 0; trip < 6; trip++)
+                Trip(350);
+            Assert.Equal(32, ring.Count(c => world.Blocks[c.x, c.y, c.z] == BlockType.TransRed));
+            uint before = world.OreDeposited;
+            Trip(200);
+            Assert.Equal(before + 200, world.OreDeposited);
+
+            // Easy engineers just deposit.
+            FakeWorld easyWorld = new FakeWorld(32, BlockType.Dirt);
+            easyWorld.Carve(2, 29, 25, 30, 2, 29);
+            easyWorld.Blocks[15, 25, 15] = BlockType.BankRed;
+            ServerBot easy = MakeBot(easyWorld, PlayerClass.Engineer, 14, 25, 15, ore: 300);
+            easy.Skill = BotSkill.Easy;
+            easy.HeadForBank();
+            RunWhile(easy, () => easy.HeadingForBank, 30);
+            Assert.Equal(0, easy.DefencesBuilt);
+            Assert.Equal(300u, easyWorld.OreDeposited);
+        }
+
+        [Fact]
+        public void SappersBlastThroughTheEnemyBanksDefences()
+        {
+            // Open ground at y = 24; a blue bank at (24, 25, 15), fenced in with blue force fields.
+            FakeWorld world = new FakeWorld(32, BlockType.Dirt);
+            world.Carve(2, 29, 25, 30, 2, 29);
+            world.Blocks[24, 25, 15] = BlockType.BankBlue;
+            var ring = ServerBot.DefenceRing((24, 25, 15)).ToList();
+            foreach (var (x, y, z) in ring)
+                world.Blocks[x, y, z] = BlockType.TransBlue;
+
+            ServerBot sapper = MakeBot(world, PlayerClass.Sapper, 8, 25, 15, ore: 200);
+            sapper.StartRaid();
+            RunWhile(sapper, () => sapper.Raiding, 60);
+
+            Assert.True(sapper.Player.Alive, "the sapper should have been out of the blast: " + sapper.Describe());
+            Assert.True(world.Detonations >= 1);
+            Assert.Contains(ring, c => world.Blocks[c.x, c.y, c.z] == BlockType.None);
+            // Through the gap to the bank.
+            Assert.Equal(1, sapper.Raids);
+            Assert.Equal(1, sapper.RaidsThrough);
+
+            // Blue bots walk through their own force fields (red ones can't dig them).
+            FakeWorld fenced = new FakeWorld(32, BlockType.Dirt);
+            fenced.Carve(2, 29, 25, 30, 2, 29);
+            fenced.Blocks[24, 25, 15] = BlockType.BankBlue;
+            foreach (var (x, y, z) in ring)
+                fenced.Blocks[x, y, z] = BlockType.TransBlue;
+            ServerBot blue = MakeBot(fenced, PlayerClass.Engineer, 8, 25, 15, ore: 100, team: PlayerTeam.Blue);
+            blue.HeadForBank();
+            RunWhile(blue, () => blue.HeadingForBank, 30);
+            Assert.Equal(100u, blue.OreDeposited);
         }
 
         [Fact]

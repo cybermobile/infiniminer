@@ -12,7 +12,7 @@ namespace Infiniminer
         void Detonate(ServerPlayer bot);                // sets off the bot's explosives
         bool AtOwnBank(ServerPlayer bot);
         void DepositOre(ServerPlayer bot);              // 50 ore into the team's bank, as the deposit key does
-        (int x, int y, int z)? FindOwnBank(ServerPlayer bot);
+        (int x, int y, int z)? FindBank(PlayerTeam team);      // the team's bank nearest the surface
         void Moved(ServerPlayer bot);                   // tell everyone where the bot is
         void Respawn(ServerPlayer bot);
         void Kill(ServerPlayer bot, string deathMessage);
@@ -27,8 +27,9 @@ namespace Infiniminer
     //   Miner       gold and diamonds, close by
     //   Prospector  gold and diamonds, sensed from further away (the radar)
     //   Engineer    ore for the team: climbs out on ladders it builds, builds the team a bank if it has none,
-    //               and deposits its ore there
-    //   Sapper      blasts through rock that a pickaxe can't dig
+    //               fences it in with the team's force fields (which only the team can walk through) and deposits
+    //               the rest of its ore there
+    //   Sapper      blasts through rock that a pickaxe can't dig, and raids the enemy bank to blow up its defences
     // It moves one block at a time, digging what is in the way, keeps away from lava (and flees lava that flows
     // towards it), and heads home early when carrying diamonds.
     public sealed class ServerBot
@@ -39,6 +40,8 @@ namespace Infiniminer
         const float StuckLimit = 30;    // seconds without progress before giving up and respawning
         const float BankTripLimit = 60; // seconds to spend walking to the bank before giving up on it
         const int BlastDistance = 4;    // explosions kill within 3 blocks
+        const float RaidLimit = 90;     // seconds a sapper spends on a raid
+        const int BuildReach = 5;       // blocks; as far as the construction gun reaches
 
         public readonly ServerPlayer Player;
         readonly IBotWorld world;
@@ -46,7 +49,7 @@ namespace Infiniminer
         public BotSkill Skill = BotSkill.Normal;
         float idleTime;                 // easy bots stop for a breather now and then
 
-        enum Plan { Wander, Descend, Tunnel, Ascend, ToBank, Blast }
+        enum Plan { Wander, Descend, Tunnel, Ascend, ToBank, Blast, Raid }
         Plan plan = Plan.Wander;
         int x, fy, z;                   // the block the bot's feet are in
         int dirX = 1, dirZ = 0;
@@ -58,6 +61,8 @@ namespace Infiniminer
         int fallStartY;
         (int x, int y, int z)? pendingLadder;   // engineers climbing: the ladder goes under their feet
         int blastStage, retreatLeft;
+        Plan afterBlast = Plan.Tunnel;
+        int defenceBudget = -1;             // ore an engineer at the bank may spend on defences (-1: not decided yet)
         int ascendBestY, relocateSteps;     // climbing: highest point so far, and steps left to walk elsewhere
         float ascendStall;
 
@@ -70,6 +75,9 @@ namespace Infiniminer
         public int Blasts { get; private set; }
         public uint OreDeposited { get; private set; }
         public int LavaEscapes { get; private set; }
+        public int DefencesBuilt { get; private set; }
+        public int Raids { get; private set; }
+        public int RaidsThrough { get; private set; }     // raids that got through to the enemy bank
 
         // Tests: start tunnelling in a direction from where the bot stands.
         internal void StartTunnel(int dx, int dz)
@@ -92,9 +100,27 @@ namespace Infiniminer
             SetPlan(Plan.ToBank);
         }
 
+        internal bool HeadingForBank
+        {
+            get { return plan == Plan.ToBank; }
+        }
+
+        internal bool Raiding
+        {
+            get { return plan == Plan.Raid || (plan == Plan.Blast && afterBlast == Plan.Raid); }
+        }
+
+        internal void StartRaid()
+        {
+            SyncFromPosition();
+            SetPlan(Plan.Raid);
+            Raids++;
+        }
+
         public string Describe()
         {
-            return $"{plan} at ({x},{fy},{z}) ore {Player.Ore} weight {Player.Weight} cash {Player.Cash} alive {Player.Alive} stuck {stuckTime:0.0}";
+            return $"{plan} at ({x},{fy},{z}) ore {Player.Ore} weight {Player.Weight} cash {Player.Cash} alive {Player.Alive} stuck {stuckTime:0.0}"
+                + (DefencesBuilt > 0 ? $" defences {DefencesBuilt}" : "") + (Raids > 0 ? $" raids {RaidsThrough}/{Raids}" : "");
         }
 
         public ServerBot(ServerPlayer player, IBotWorld world, int seed)
@@ -145,6 +171,45 @@ namespace Infiniminer
         BlockType OwnBank
         {
             get { return Player.Team == PlayerTeam.Red ? BlockType.BankRed : BlockType.BankBlue; }
+        }
+
+        BlockType OwnForceField
+        {
+            get { return Player.Team == PlayerTeam.Red ? BlockType.TransRed : BlockType.TransBlue; }
+        }
+
+        PlayerTeam Enemy
+        {
+            get { return Player.Team == PlayerTeam.Red ? PlayerTeam.Blue : PlayerTeam.Red; }
+        }
+
+        // The ring a bank's defences go in: two blocks out from it all round, two blocks high (too high to jump).
+        internal static IEnumerable<(int x, int y, int z)> DefenceRing((int x, int y, int z) bank)
+        {
+            for (int dy = 0; dy <= 1; dy++)
+                for (int dx = -2; dx <= 2; dx++)
+                    for (int dz = -2; dz <= 2; dz++)
+                        if (Math.Abs(dx) == 2 || Math.Abs(dz) == 2)
+                            yield return (bank.x + dx, bank.y + dy, bank.z + dz);
+        }
+
+        // A team's walls and force fields: only explosives get through them.
+        static bool IsDefence(BlockType block, PlayerTeam team)
+        {
+            return team == PlayerTeam.Red ? block == BlockType.SolidRed || block == BlockType.TransRed
+                                          : block == BlockType.SolidBlue || block == BlockType.TransBlue;
+        }
+
+        int DefencesAround((int x, int y, int z) bank, PlayerTeam team)
+        {
+            return DefenceRing(bank).Count(c => IsDefence(world.BlockAt(c.x, c.y, c.z), team));
+        }
+
+        // What a sapper's explosives are for: rock, and the enemy's defences.
+        bool Blastable(int bx, int by, int bz)
+        {
+            BlockType block = world.BlockAt(bx, by, bz);
+            return block == BlockType.Rock || IsDefence(block, Enemy);
         }
 
         bool Solid(int bx, int by, int bz)
@@ -346,6 +411,7 @@ namespace Infiniminer
             ascendBestY = fy;
             ascendStall = 0;
             relocateSteps = 0;
+            defenceBudget = -1;
         }
 
         // Turns towards the middle of the map, along whichever axis is further off.
@@ -475,6 +541,11 @@ namespace Infiniminer
                         TripsHome++;
                         if (Class == PlayerClass.Engineer && Player.Ore >= 50)
                             SetPlan(Plan.ToBank);
+                        else if (Class == PlayerClass.Sapper && WantsToRaid())
+                        {
+                            SetPlan(Plan.Raid);
+                            Raids++;
+                        }
                         else
                         {
                             SetPlan(Plan.Wander);
@@ -529,6 +600,10 @@ namespace Infiniminer
 
                 case Plan.Blast:
                     ContinueBlast();
+                    return;
+
+                case Plan.Raid:
+                    Raid();
                     return;
             }
         }
@@ -651,7 +726,7 @@ namespace Infiniminer
         // Engineers on the surface: build the team a bank if it has none, otherwise walk to it and deposit ore.
         void GoToBank()
         {
-            if (Player.Ore < 50 || planTime > BankTripLimit)
+            if (Player.Ore == 0 || planTime > BankTripLimit)
             {
                 SetPlan(Plan.Wander);
                 stepsLeft = 3 + random.Next(8);
@@ -659,17 +734,27 @@ namespace Infiniminer
             }
             if (world.AtOwnBank(Player))
             {
-                if (actionCooldown <= 0)
+                if (actionCooldown > 0)
+                    return;
+                // Up to half of what it brought goes on defences while the bank still needs them (not easy bots).
+                if (defenceBudget < 0)
+                    defenceBudget = Skill == BotSkill.Easy ? 0 : (int)Player.Ore / 2;
+                // Building and depositing are progress, even standing still.
+                stuckTime = 0;
+                if (defenceBudget >= BlockInformation.GetCost(OwnForceField) && Fortify())
                 {
-                    uint before = Player.Ore;
-                    world.DepositOre(Player);
-                    OreDeposited += before - Player.Ore;
-                    actionCooldown = 0.5f;
+                    actionCooldown = GameRules.GetToolCooldown(PlayerTools.ConstructionGun, Class);
+                    return;
                 }
+                defenceBudget = 0;
+                uint before = Player.Ore;
+                world.DepositOre(Player);
+                OreDeposited += before - Player.Ore;
+                actionCooldown = 0.5f;
                 return;
             }
 
-            (int x, int y, int z)? bank = world.FindOwnBank(Player);
+            (int x, int y, int z)? bank = world.FindBank(Player.Team);
             if (bank == null)
             {
                 // No bank yet: build one next to us, on solid ground.
@@ -692,28 +777,97 @@ namespace Infiniminer
                 return;
             }
 
-            // Walk towards the bank, climbing or digging as needed.
-            int ddx = bank.Value.x - x, ddz = bank.Value.z - z;
+            if (!WalkTowards(bank.Value.x, bank.Value.z))
+            {
+                TurnRandomly();
+                Step(climb: true, dig: true);
+            }
+        }
+
+        // The two directions that lead towards a block, the more direct first.
+        (int dx, int dz)[] DirectionsTowards(int tx, int tz)
+        {
+            int ddx = tx - x, ddz = tz - z;
             (int, int) preferred = Math.Abs(ddx) >= Math.Abs(ddz) ? (Math.Sign(ddx), 0) : (0, Math.Sign(ddz));
             (int, int) other = Math.Abs(ddx) >= Math.Abs(ddz) ? (0, Math.Sign(ddz)) : (Math.Sign(ddx), 0);
-            foreach (var (dx, dz) in new[] { preferred, other })
+            return new[] { preferred, other }.Where(d => d != (0, 0)).ToArray();
+        }
+
+        // One step towards a block, climbing or digging as needed. Returns false if both ways are blocked.
+        bool WalkTowards(int tx, int tz)
+        {
+            foreach (var (dx, dz) in DirectionsTowards(tx, tz))
             {
-                if (dx == 0 && dz == 0)
-                    continue;
                 (dirX, dirZ) = (dx, dz);
                 if (Step(climb: true, dig: true))
+                    return true;
+            }
+            return false;
+        }
+
+        // Engineers at the bank: puts one of the team's force fields in the next empty spot of the ring round it,
+        // within reach and not where it is standing. Returns false when there is nothing more to build here.
+        bool Fortify()
+        {
+            if (world.FindBank(Player.Team) is not (int, int, int) bank)
+                return false;
+            foreach (var (cx, cy, cz) in DefenceRing(bank))
+            {
+                if (world.BlockAt(cx, cy, cz) != BlockType.None || (cx == x && cz == z && (cy == fy || cy == fy + 1)))
+                    continue;
+                if (Vector3.Distance(Player.Position, new Vector3(cx + 0.5f, cy + 0.5f, cz + 0.5f)) > BuildReach)
+                    continue;
+                if (TryBuild(cx, cy, cz, OwnForceField))
+                {
+                    DefencesBuilt++;
+                    defenceBudget -= (int)BlockInformation.GetCost(OwnForceField);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Sappers back on the surface with an explosive to spare sometimes go after the enemy's defences.
+        bool WantsToRaid()
+        {
+            if (Skill == BotSkill.Easy || Player.Ore < BlockInformation.GetCost(BlockType.Explosive))
+                return false;
+            return world.FindBank(Enemy) is (int, int, int) bank && DefencesAround(bank, Enemy) > 0 && random.Next(2) == 0;
+        }
+
+        // Walks to the enemy bank and blasts a way through the defences round it.
+        void Raid()
+        {
+            (int x, int y, int z)? bank = world.FindBank(Enemy);
+            bool through = bank != null && Math.Max(Math.Abs(bank.Value.x - x), Math.Abs(bank.Value.z - z)) <= 1;
+            if (through)
+                RaidsThrough++;
+            if (bank == null || through || planTime > RaidLimit || Player.Ore < BlockInformation.GetCost(BlockType.Explosive))
+            {
+                SetPlan(Plan.Wander);
+                stepsLeft = 3 + random.Next(8);
+                TurnRandomly();
+                return;
+            }
+            if (WalkTowards(bank.Value.x, bank.Value.z))
+                return;
+            foreach (var (dx, dz) in DirectionsTowards(bank.Value.x, bank.Value.z))
+            {
+                (dirX, dirZ) = (dx, dz);
+                if (TryStartBlast(then: Plan.Raid))
                     return;
             }
             TurnRandomly();
             Step(climb: true, dig: true);
         }
 
-        // Sappers facing rock: back off a block, put an explosive where they stood, retreat out of range and set it
-        // off. Needs a straight, open tunnel behind to retreat along. Returns false if it can't be done here.
-        bool TryStartBlast()
+        // Sappers facing rock (or enemy defences): back off a block, put an explosive where they stood, retreat out of
+        // range and set it off, then carry on with `then`. Needs a straight, open way behind to retreat along.
+        // Returns false if it can't be done here.
+        bool TryStartBlast(Plan then = Plan.Tunnel)
         {
             int nx = x + dirX, nz = z + dirZ;
-            if (world.BlockAt(nx, fy, nz) != BlockType.Rock && world.BlockAt(nx, fy + 1, nz) != BlockType.Rock)
+            if (!Blastable(nx, fy, nz) && !Blastable(nx, fy + 1, nz))
                 return false;
             if (Player.Ore < BlockInformation.GetCost(BlockType.Explosive))
                 return false;
@@ -725,6 +879,7 @@ namespace Infiniminer
             }
             SetPlan(Plan.Blast);
             blastStage = 0;
+            afterBlast = then;
             return true;
         }
 
@@ -741,7 +896,7 @@ namespace Infiniminer
                 case 1:
                     if (!TryBuild(x - backX, fy, z - backZ, BlockType.Explosive))
                     {
-                        SetPlan(Plan.Tunnel);
+                        SetPlan(afterBlast);
                         ChooseDirection();
                         return;
                     }
@@ -763,8 +918,8 @@ namespace Infiniminer
                 default:
                     if (actionCooldown > 0)
                         return;
-                    // Back to the blasted rock face.
-                    SetPlan(Plan.Tunnel);
+                    // Back to the blasted rock face (or on with the raid).
+                    SetPlan(afterBlast);
                     stepsLeft = Math.Max(stepsLeft, 8);
                     return;
             }

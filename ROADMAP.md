@@ -104,3 +104,5 @@ The original server trusted almost everything the client said.
       triangles, identical picture); `seed` for repeatable worlds; frame rate and draw counts in the trace output
 - [x] Spectator mode: SPECTATE on the team screen, free flight, "WATCHING" on the scoreboard; the server
       won't respawn or accept actions from players without a team and class
+- [x] Bots that defend and attack: engineers fence the bank in with force fields (two high, so it can't be
+      jumped), and sappers raid the enemy bank and blast through its fence

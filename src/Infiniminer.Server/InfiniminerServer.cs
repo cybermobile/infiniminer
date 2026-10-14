@@ -1532,9 +1532,9 @@ namespace Infiniminer
         }
 
         // The team's bank nearest the surface (bots only look for banks they can walk to).
-        (int x, int y, int z)? IBotWorld.FindOwnBank(ServerPlayer bot)
+        (int x, int y, int z)? IBotWorld.FindBank(PlayerTeam team)
         {
-            BlockType ownBank = bot.Team == PlayerTeam.Red ? BlockType.BankRed : BlockType.BankBlue;
+            BlockType ownBank = team == PlayerTeam.Red ? BlockType.BankRed : BlockType.BankBlue;
             int surface = MAPSIZE - GameConstants.GroundLevel - 1;
             for (int y = Math.Min(MAPSIZE - 2, surface + 12); y >= Math.Max(1, surface - 3); y--)
                 for (int x = 1; x < MAPSIZE - 1; x++)
