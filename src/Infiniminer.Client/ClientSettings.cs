@@ -59,6 +59,7 @@ namespace Infiniminer
         public bool HostHomeBases = true;
         public bool HostSandbox = false;
         public int HostBots = 2;            // computer players
+        public BotSkill HostBotSkill = BotSkill.Normal;
         public bool HostInternet = false;   // forward the port on the router (UPnP)
         public Dictionary<GameAction, Keys> KeyBindings = DefaultKeyBindings();
 
@@ -135,6 +136,7 @@ namespace Infiniminer
                 SandboxMode = HostSandbox,
                 AutoBalance = true,
                 Bots = HostBots,
+                BotSkill = HostBotSkill,
                 Upnp = HostInternet,
                 // Open to the internet, the game is also announced on the public server list, if one is set.
                 PublicServer = HostInternet && ServerListUrl != "",
@@ -203,6 +205,8 @@ namespace Infiniminer
             settings.HostHomeBases = dataFile.GetBool("host_homebases", settings.HostHomeBases);
             settings.HostSandbox = dataFile.GetBool("host_sandbox", settings.HostSandbox);
             settings.HostBots = Math.Clamp(dataFile.GetInt("host_bots", settings.HostBots), 0, 16);
+            if (Enum.TryParse(dataFile.GetString("host_botskill", ""), true, out BotSkill skill) && Enum.IsDefined(skill))
+                settings.HostBotSkill = skill;
             settings.HostInternet = dataFile.GetBool("host_internet", settings.HostInternet);
             foreach (GameAction action in Enum.GetValues<GameAction>())
                 if (Enum.TryParse(dataFile.GetString(ConfigKey(action), ""), true, out Keys key) && key != Keys.None)
@@ -267,6 +271,7 @@ namespace Infiniminer
             Line("host_homebases = " + Bool(HostHomeBases));
             Line("host_sandbox = " + Bool(HostSandbox));
             Line("host_bots = " + HostBots.ToString(CultureInfo.InvariantCulture));
+            Line("host_botskill = " + HostBotSkill.ToString().ToLowerInvariant());
             Line("host_internet = " + Bool(HostInternet));
             Line();
             Line("# Key bindings (names from https://docs.monogame.net/api/Microsoft.Xna.Framework.Input.Keys.html).");

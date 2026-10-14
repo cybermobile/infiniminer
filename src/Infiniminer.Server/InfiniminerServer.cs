@@ -309,6 +309,7 @@ namespace Infiniminer
                         ConsoleWrite(" unban <ip>");
                         ConsoleWrite(" say <message>");
                         ConsoleWrite(" bots [count]");
+                        ConsoleWrite(" botskill <easy|normal|hard>");
                         ConsoleWrite(" tp <player name> <x> <y> <z>");
                         ConsoleWrite(" save <mapfile>");
                         ConsoleWrite(" load <mapfile>");
@@ -389,6 +390,20 @@ namespace Infiniminer
                         }
                         else
                             ConsoleWrite("bots <count from 0 to 16>");
+                    }
+                    break;
+
+                case "botskill":
+                    {
+                        if (args.Length == 2 && Enum.TryParse(args[1], true, out BotSkill skill) && Enum.IsDefined(skill))
+                        {
+                            config.BotSkill = skill;
+                            foreach (ServerBot bot in bots)
+                                bot.Skill = skill;
+                            ConsoleWrite("BOTS ARE NOW " + skill.ToString().ToUpperInvariant());
+                        }
+                        else
+                            ConsoleWrite("botskill <easy, normal or hard>; now " + config.BotSkill.ToString().ToLowerInvariant());
                     }
                     break;
 
@@ -1278,7 +1293,7 @@ namespace Infiniminer
             string name = BotNames.FirstOrDefault(n => !playerList.Values.Any(p => p.Handle == "BOT " + n)) ?? "BOT " + bots.Count;
             ServerPlayer player = new ServerPlayer(null, "bot") { Handle = name.StartsWith("BOT ") ? name : "BOT " + name };
             playerList[-(int)player.ID] = player;
-            ServerBot bot = new ServerBot(player, this, randGen.Next());
+            ServerBot bot = new ServerBot(player, this, randGen.Next()) { Skill = config.BotSkill };
             bots.Add(bot);
             ConsoleWrite("BOT JOINED: " + player.Handle);
             SendPlayerJoined(player);

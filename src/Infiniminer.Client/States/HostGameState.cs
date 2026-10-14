@@ -107,6 +107,13 @@ namespace Infiniminer.States
                 },
                 new Row
                 {
+                    Label = "COMPUTER SKILL",
+                    Value = () => Settings.HostBotSkill.ToString().ToUpperInvariant(),
+                    Enabled = () => Settings.HostBots > 0,
+                    Change = direction => { Settings.HostBotSkill = (BotSkill)Cycle((int)Settings.HostBotSkill, direction, 3); Changed(); },
+                },
+                new Row
+                {
                     Label = "TIME LIMIT",
                     Value = () => Settings.HostTimeLimit == 0 ? "NONE" : Settings.HostTimeLimit + " MINUTES",
                     Change = direction =>

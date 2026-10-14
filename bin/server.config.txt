@@ -53,6 +53,9 @@ adminpassword =
 # when people join a full server. Change it while running with the "bots <count>" console command.
 bots = 0
 
+# How well bots play: easy, normal or hard. Even hard bots dig and walk no faster than players.
+botskill = normal
+
 # Ask your router to forward the server's UDP port (UPnP), so players on the internet can join. If the
 # router has UPnP switched off, forward the port by hand instead. The console says which happened.
 upnp = false

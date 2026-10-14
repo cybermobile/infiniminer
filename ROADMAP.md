@@ -96,3 +96,7 @@ The original server trusted almost everything the client said.
 - [x] Steam Deck readiness: an on-screen keyboard for controller text entry (names, addresses, chat), chat
       from the controller, 1280x800 on first run on a Deck, setup notes; fullscreen is now borderless
 - [ ] Try it on a real Steam Deck
+
+## 12. More to play with
+- [x] Bot difficulty: easy, normal or hard (`botskill`, the console command, COMPUTER SKILL in HOST GAME)
+- [ ] Keep the world between sessions (until a match ends)

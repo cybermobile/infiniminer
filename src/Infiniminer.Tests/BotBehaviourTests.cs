@@ -119,6 +119,26 @@ namespace Infiniminer.Tests
         }
 
         [Fact]
+        public void HardBotsGetMoreDoneThanEasyOnes()
+        {
+            int Dug(BotSkill skill)
+            {
+                // A big block of dirt to tunnel through.
+                FakeWorld world = new FakeWorld(48, BlockType.Dirt);
+                world.Carve(20, 20, 20, 21, 20, 20);
+                ServerBot bot = MakeBot(world, PlayerClass.Miner, 20, 20, 20, ore: 0);
+                bot.Skill = skill;
+                bot.StartTunnel(1, 0);
+                Run(bot, 60);
+                return bot.BlocksDug;
+            }
+
+            int easy = Dug(BotSkill.Easy), normal = Dug(BotSkill.Normal), hard = Dug(BotSkill.Hard);
+            Assert.True(easy < normal && normal <= hard, $"easy {easy}, normal {normal}, hard {hard}");
+            Assert.True(hard > easy * 3 / 2, $"easy {easy}, hard {hard}");
+        }
+
+        [Fact]
         public void SappersBlastThroughRockFromASafeDistance()
         {
             // Solid rock, with a corridor from x = 3 to 15 at y = 10..11, z = 10.

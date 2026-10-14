@@ -143,7 +143,10 @@ sense them from further away, engineers gather ore, climb out on ladders they bu
 use), build the team a bank if it has none and keep it stocked, and sappers blast through rock with
 explosives. They avoid lava (and flee it when it flows towards them), take diamonds straight home, keep
 the teams even and leave to make room when a person joins a full server. The "bots" console command on
-its own lists what each bot is doing.
+its own lists what each bot is doing. "botskill = easy, normal or hard" (or COMPUTER SKILL in HOST GAME,
+or the "botskill" command) sets how well they play: easy bots dig and walk slower and notice less; hard
+bots dig as fast as the tools allow, notice more and keep at it longer, but never beyond what a player
+can do.
 
 Server console commands: help, players, bots <count>, kick <ip or name>, ban <ip or name>, unban <ip>, say <message>,
 tp <player> <x> <y> <z>, save <file>, load <file>, restart, quit. "load" sends the new map to everyone.

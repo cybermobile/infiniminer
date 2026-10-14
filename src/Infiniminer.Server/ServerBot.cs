@@ -18,6 +18,10 @@ namespace Infiniminer
         void Kill(ServerPlayer bot, string deathMessage);
     }
 
+    // How well computer players play. Even hard bots stay within what a person can do: they dig no faster than
+    // the tools allow and walk no faster than players; they notice more and waste less time.
+    public enum BotSkill { Easy, Normal, Hard }
+
     // A computer player. Every class digs down, tunnels and climbs back to the surface, where the server banks
     // its loot as it does for everyone; what it looks for and how it gets around depends on its class:
     //   Miner       gold and diamonds, close by
@@ -39,6 +43,8 @@ namespace Infiniminer
         public readonly ServerPlayer Player;
         readonly IBotWorld world;
         readonly Random random;
+        public BotSkill Skill = BotSkill.Normal;
+        float idleTime;                 // easy bots stop for a breather now and then
 
         enum Plan { Wander, Descend, Tunnel, Ascend, ToBank, Blast }
         Plan plan = Plan.Wander;
@@ -110,10 +116,30 @@ namespace Infiniminer
             get { return world.MapSize - GameConstants.GroundLevel - 1; }
         }
 
-        // How far a bot notices what it is after: a prospector's radar reaches further than anyone's eyes.
+        // How far a bot notices what it is after: a prospector's radar reaches further than anyone's eyes, and
+        // better players notice more.
         int SenseRange
         {
-            get { return Class == PlayerClass.Prospector ? 12 : 6; }
+            get
+            {
+                int range = Class == PlayerClass.Prospector ? 12 : 6;
+                return Skill == BotSkill.Easy ? range / 2 : Skill == BotSkill.Hard ? range * 3 / 2 : range;
+            }
+        }
+
+        float WalkSpeed
+        {
+            get { return GameRules.MoveSpeed * (Skill == BotSkill.Easy ? 0.7f : 1f); }
+        }
+
+        // Seconds between pickaxe swings: the tool's cooldown, plus some hesitation unless hard.
+        float DigDelay
+        {
+            get
+            {
+                float cooldown = GameRules.GetToolCooldown(PlayerTools.Pickaxe, Class);
+                return Skill == BotSkill.Easy ? cooldown * 1.8f + 0.1f : Skill == BotSkill.Hard ? cooldown : cooldown + 0.05f;
+            }
         }
 
         BlockType OwnBank
@@ -237,7 +263,7 @@ namespace Infiniminer
             Aim(bx, by, bz);
             world.Dig(Player, bx, by, bz);
             BlocksDug++;
-            digCooldown = GameRules.GetToolCooldown(PlayerTools.Pickaxe, Class) + 0.05f;
+            digCooldown = DigDelay;
             Player.UsingTool = true;
             toolTimer = 0.3f;
             return true;
@@ -354,6 +380,17 @@ namespace Infiniminer
                 }
             }
 
+            if (idleTime > 0)
+            {
+                idleTime -= elapsed;
+                return;
+            }
+            if (Skill == BotSkill.Easy && plan != Plan.Blast && random.NextDouble() < elapsed * 0.1)
+            {
+                idleTime = 1 + (float)random.NextDouble() * 2;
+                return;
+            }
+
             stuckTime += elapsed;
             if (stuckTime > StuckLimit)
             {
@@ -401,7 +438,7 @@ namespace Infiniminer
                     {
                         SetPlan(Plan.Tunnel);
                         stepsLeft = 10 + random.Next(20);
-                        tunnelsLeft = 3;
+                        tunnelsLeft = Skill == BotSkill.Hard ? 4 : Skill == BotSkill.Easy ? 2 : 3;
                         ChooseDirection();
                         return;
                     }
@@ -507,7 +544,7 @@ namespace Infiniminer
                     LavaEscapes++;
                     SetPlan(Plan.Ascend);
                     (dirX, dirZ) = (dx, dz);
-                    StartMove(nx, fy, nz, GameRules.MoveSpeed);
+                    StartMove(nx, fy, nz, WalkSpeed);
                     return true;
                 }
             }
@@ -535,7 +572,7 @@ namespace Infiniminer
                     drop++;
                 if (drop >= 5 || NearLava(nx, fy, nz) || NearLava(nx, fy - drop, nz))
                     return false;
-                StartMove(nx, fy, nz, GameRules.MoveSpeed);
+                StartMove(nx, fy, nz, WalkSpeed);
                 stepsLeft--;
                 return true;
             }
@@ -543,7 +580,7 @@ namespace Infiniminer
             if (climb && Solid(nx, fy, nz) && !Solid(nx, fy + 1, nz) && !Solid(nx, fy + 2, nz) && !Solid(x, fy + 2, z)
                 && !NearLava(nx, fy + 1, nz))
             {
-                StartMove(nx, fy + 1, nz, GameRules.MoveSpeed);
+                StartMove(nx, fy + 1, nz, WalkSpeed);
                 stepsLeft--;
                 return true;
             }
@@ -587,7 +624,7 @@ namespace Infiniminer
                 (dirX, dirZ) = (dx, dz);
                 if (toDig is (int tx, int ty, int tz))
                     return TryDig(tx, ty, tz);
-                StartMove(nx, fy + 1, nz, GameRules.MoveSpeed);
+                StartMove(nx, fy + 1, nz, WalkSpeed);
                 return true;
             }
             return Step(climb: false, dig: true);
@@ -607,7 +644,7 @@ namespace Infiniminer
                 return actionCooldown > 0;
             actionCooldown = GameRules.GetToolCooldown(PlayerTools.ConstructionGun, Class);
             pendingLadder = (x, fy, z);
-            StartMove(x, fy + 1, z, GameRules.MoveSpeed);
+            StartMove(x, fy + 1, z, WalkSpeed);
             return true;
         }
 
@@ -699,7 +736,7 @@ namespace Infiniminer
                 case 0:
                     // Step back; the explosive goes where we were standing, against the rock.
                     blastStage = 1;
-                    StartMove(x + backX, fy, z + backZ, GameRules.MoveSpeed);
+                    StartMove(x + backX, fy, z + backZ, WalkSpeed);
                     return;
                 case 1:
                     if (!TryBuild(x - backX, fy, z - backZ, BlockType.Explosive))
@@ -714,7 +751,7 @@ namespace Infiniminer
                 case 2:
                     if (retreatLeft-- > 0)
                     {
-                        StartMove(x + backX, fy, z + backZ, GameRules.MoveSpeed);
+                        StartMove(x + backX, fy, z + backZ, WalkSpeed);
                         return;
                     }
                     Player.Tool = PlayerTools.Detonator;
