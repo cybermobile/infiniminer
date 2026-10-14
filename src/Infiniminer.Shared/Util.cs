@@ -77,6 +77,18 @@ namespace Infiniminer
         }
     }
 
+    public static class ServerListUrl
+    {
+        // "http://host:8080" means the list's standard endpoint (/post for servers, /plain for clients);
+        // a URL with a path is used as given, so the original style of full URLs keeps working.
+        public static string Endpoint(string url, string path)
+        {
+            if (Uri.TryCreate(url, UriKind.Absolute, out Uri uri) && (uri.AbsolutePath == "/" || uri.AbsolutePath == ""))
+                return url.TrimEnd('/') + path;
+            return url;
+        }
+    }
+
     public static class HttpRequest
     {
         static readonly HttpClient client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };

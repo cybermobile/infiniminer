@@ -38,6 +38,21 @@ xsel package.
 macOS notes: downloaded builds are unsigned; run `xattr -dr com.apple.quarantine <folder>` once.
 
 
+PUBLIC SERVER LIST
+==================
+
+The original public server list (apps.keithholman.net) is gone. src/Infiniminer.ServerList is a
+replacement that anyone can host:
+
+    dotnet run --project src/Infiniminer.ServerList -- --urls http://0.0.0.0:8080
+
+Game servers with "public = true" and "serverlist = http://your-host:8080" announce themselves every five
+minutes, and clients with the same serverlist setting show them in the server browser. Servers that stop
+announcing disappear after 12 minutes. Opening the URL in a web browser shows the current list. The
+address listed is the one the announcement came from; set TRUST_FORWARDED_HEADERS=true when running
+behind a reverse proxy.
+
+
 CONFIGURATION
 =============
 
@@ -50,8 +65,8 @@ executables on build) are read from the current directory if present, otherwise 
 executable. Other new settings:
 
   port        (server) UDP port to listen on, default 5565. LAN discovery only looks on 5565.
-  serverlist  (client and server) URL of a public server list. The original list service is gone, so
-              this is empty by default and only LAN/direct connect are used.
+  serverlist  (client and server) URL of a public server list (see PUBLIC SERVER LIST). Empty by
+              default, so only LAN discovery and direct connect are used.
   homebases   (server) give each team a home base to spawn at (default false).
   shocktouch  (server) shock blocks kill on any touch, not just from below (default false).
 

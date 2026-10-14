@@ -12,5 +12,6 @@
     <ProjectReference Include="..\Infiniminer.Shared\Infiniminer.Shared.csproj" />
     <ProjectReference Include="..\Infiniminer.Server\Infiniminer.Server.csproj" />
     <ProjectReference Include="..\Infiniminer.Client\Infiniminer.Client.csproj" />
+    <ProjectReference Include="..\Infiniminer.ServerList\Infiniminer.ServerList.csproj" />
   </ItemGroup>
 </Project>

@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Infiniminer.Client", "Infin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Infiniminer.Tests", "Infiniminer.Tests\Infiniminer.Tests.csproj", "{614B1CFA-89A9-41B7-B667-CAD72260396B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Infiniminer.ServerList", "Infiniminer.ServerList\Infiniminer.ServerList.csproj", "{56402229-3686-4CA8-8C01-21D1C6D5B287}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,5 +38,9 @@ Global
 		{614B1CFA-89A9-41B7-B667-CAD72260396B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{614B1CFA-89A9-41B7-B667-CAD72260396B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{614B1CFA-89A9-41B7-B667-CAD72260396B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{56402229-3686-4CA8-8C01-21D1C6D5B287}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{56402229-3686-4CA8-8C01-21D1C6D5B287}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{56402229-3686-4CA8-8C01-21D1C6D5B287}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{56402229-3686-4CA8-8C01-21D1C6D5B287}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

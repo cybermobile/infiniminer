@@ -195,18 +195,25 @@ namespace Infiniminer
             publicServerListTask = serverListUrl == "" ? null : Task.Run(() => FetchPublicServerList(serverListUrl));
         }
 
-        static async Task<List<ServerInformation>> FetchPublicServerList(string url)
+        public static async Task<List<ServerInformation>> FetchPublicServerList(string url)
+        {
+            return ParsePublicServerList(await HttpRequest.GetAsync(ServerListUrl.Endpoint(url, "/plain")));
+        }
+
+        // One server per line: name;ip;INFINIMINER;players;capacity;extra[;port]
+        public static List<ServerInformation> ParsePublicServerList(string publicList)
         {
             List<ServerInformation> serverList = new List<ServerInformation>();
-            string publicList = await HttpRequest.GetAsync(url);
             foreach (string s in publicList.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 string[] args = s.Split(';');
-                if (args.Length == 6)
-                {
-                    if (IPAddress.TryParse(args[1], out IPAddress serverIp) && args[2] == "INFINIMINER")
-                        serverList.Add(new ServerInformation(serverIp, args[0], args[5], args[3], args[4]));
-                }
+                if (args.Length != 6 && args.Length != 7)
+                    continue;
+                int port = GameConstants.DefaultPort;
+                if (args.Length == 7 && !int.TryParse(args[6], out port))
+                    continue;
+                if (IPAddress.TryParse(args[1], out IPAddress serverIp) && args[2] == "INFINIMINER")
+                    serverList.Add(new ServerInformation(new IPEndPoint(serverIp, port), args[0], args[5], args[3], args[4]));
             }
             return serverList;
         }

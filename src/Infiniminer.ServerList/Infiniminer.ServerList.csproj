@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <AssemblyName>InfiniminerServerList</AssemblyName>
+    <RootNamespace>Infiniminer.ServerList</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Infiniminer.Shared\Infiniminer.Shared.csproj" />
+  </ItemGroup>
+</Project>

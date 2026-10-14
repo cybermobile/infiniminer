@@ -107,9 +107,10 @@ namespace Infiniminer
             postDict["player_count"] = "" + playerList.Count;
             postDict["player_capacity"] = "" + config.MaxPlayers;
             postDict["extra"] = GetExtraInfo();
+            postDict["port"] = "" + netServer.LocalPort;
 
             // Posted in the background so a slow or dead list server never stalls the game loop.
-            string url = config.ServerListUrl;
+            string url = ServerListUrl.Endpoint(config.ServerListUrl, "/post");
             Task.Run(async () =>
             {
                 try

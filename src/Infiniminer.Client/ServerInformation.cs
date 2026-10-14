@@ -25,9 +25,9 @@ namespace Infiniminer
         }
 
         // A server from the public server list.
-        public ServerInformation(IPAddress ip, string name, string extra, string numPlayers, string maxPlayers)
+        public ServerInformation(IPEndPoint endPoint, string name, string extra, string numPlayers, string maxPlayers)
         {
-            ipEndPoint = new IPEndPoint(ip, GameConstants.DefaultPort);
+            ipEndPoint = endPoint;
             serverName = name;
             serverExtra = extra;
             this.numPlayers = numPlayers;

@@ -31,8 +31,9 @@ The original server trusted almost everything the client said.
 - [x] Drill tool: miners carry it; slower than the pickaxe, but bores through rock
 - [x] Metal block: the indestructible floor of home bases
 
-## 4. Finding games
-- [ ] A replacement public server list service
+## 4. Finding games — done
+- [x] A replacement public server list service (`src/Infiniminer.ServerList`): the original /post and /plain
+      protocol plus a port field, expiry, per-address limits, and a web page listing the servers
 
 ## 5. Gameplay depth
 - [ ] Match timer / win target scaled to player count

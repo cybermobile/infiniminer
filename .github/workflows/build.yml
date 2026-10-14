@@ -38,6 +38,7 @@ jobs:
         run: |
           dotnet publish src/Infiniminer.Client -c Release -r ${{ matrix.rid }} --self-contained -o out/Infiniminer
           dotnet publish src/Infiniminer.Server -c Release -r ${{ matrix.rid }} --self-contained -o out/InfiniminerServer
+          dotnet publish src/Infiniminer.ServerList -c Release -r ${{ matrix.rid }} --self-contained -o out/InfiniminerServerList
       - uses: actions/upload-artifact@v4
         with:
           name: infiniminer-${{ matrix.rid }}
