@@ -242,6 +242,35 @@ namespace Infiniminer.Tests
         }
 
         [Fact]
+        public void SpectatorsCannotPlay()
+        {
+            using Bot bot = new Bot();
+            bot.Connect(server.Port);
+            WaitFor(bot, () => bot.MapComplete && bot.MyId != 0, "map download and join");
+
+            // Without a team (spectating, or never having chosen one) there is no coming back to life...
+            bot.Send(ClientMessages.SetTeam(PlayerTeam.None));
+            bot.Send(ClientMessages.SelectClass(PlayerClass.Miner));
+            bot.Send(ClientMessages.Respawn());
+            WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.PlayerSetTeam).Any(r => r.GetUInt() == bot.MyId && r.GetByte() == (byte)PlayerTeam.None), "spectating");
+            Thread.Sleep(300);
+            bot.Net.PollEvents();
+            Assert.DoesNotContain(bot.MessagesOfType(InfiniminerMessage.PlayerAlive), r => r.GetUInt() == bot.MyId);
+
+            // ...and so nothing to dig with.
+            int blocksBefore = bot.MessagesOfType(InfiniminerMessage.BlockSet).Count();
+            bot.Send(ClientMessages.UseTool(new System.Numerics.Vector3(32, 60, 32), -System.Numerics.Vector3.UnitY, PlayerTools.Pickaxe));
+            Thread.Sleep(300);
+            bot.Net.PollEvents();
+            Assert.Equal(blocksBefore, bot.MessagesOfType(InfiniminerMessage.BlockSet).Count());
+
+            // Picking a team afterwards works as usual.
+            bot.Send(ClientMessages.SetTeam(PlayerTeam.Blue));
+            bot.Send(ClientMessages.Respawn());
+            WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.PlayerAlive).Any(r => r.GetUInt() == bot.MyId), "respawning on a team");
+        }
+
+        [Fact]
         public void PlayerCanJoinDigAndBuild()
         {
             using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);

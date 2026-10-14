@@ -87,6 +87,10 @@ controller vibration, volume, bloom, colour-blind mode, FPS counter and key bind
 resized freely; menus scale to fit it. In game, Escape on its own opens a menu (resume, change team or
 class, options, respawn, leave server); Escape+Y, Escape+K and Escape+O still work as shortcuts.
 
+SPECTATING: choose SPECTATE on the team screen to watch without playing. Fly with the movement keys (or the
+left stick), Space/Shift (A/B) to go up and down; Tab (or Back) shows the scoreboard with who is watching.
+Change team from the menu (or the change-team key) to join in. Spectators don't count towards team sizes.
+
 CONTROLLERS: Xbox, PlayStation, Switch Pro and most other controllers work (buttons are named after the
 Xbox ones; A is Cross on a PlayStation controller). Every menu works with the D-pad or left stick, A and B.
 In game:

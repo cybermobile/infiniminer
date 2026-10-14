@@ -365,7 +365,24 @@ namespace Infiniminer
                     RenderMessageCenter(spriteBatch, p.Handle + " ( $" + p.Score + " )", new Vector2(ScreenWidth * 3 / 4, drawY), InfiniminerGame.IM_BLUE, new Color(0, 0, 0, 0));
                     drawY += 35;
                 }
+
+                // Everyone else is watching (or still choosing a team).
+                string watching = string.Join(", ", _P.playerList.Values.Where(p => p.Team == PlayerTeam.None).Select(p => p.Handle));
+                if (watching != "")
+                    RenderMessageCenter(spriteBatch, "WATCHING: " + watching, new Vector2(ScreenWidth / 2, ScreenHeight - 120), Color.Gray, new Color(0, 0, 0, 0));
             }
+
+            // Spectators: how to get into the game.
+            if (_P.player.Spectating && _P.chatMode == ChatMessageType.None)
+                RenderMessageCenter(spriteBatch, gameInstance.UsingGamePad
+                        ? "SPECTATING - LEFT STICK TO FLY, A/B UP/DOWN, START > CHANGE TEAM TO PLAY"
+                        : "SPECTATING - FLY WITH " + ClientSettings.KeyName(gameInstance.Settings.Key(GameAction.MoveForward)) + "/"
+                          + ClientSettings.KeyName(gameInstance.Settings.Key(GameAction.MoveLeft)) + "/"
+                          + ClientSettings.KeyName(gameInstance.Settings.Key(GameAction.MoveBack)) + "/"
+                          + ClientSettings.KeyName(gameInstance.Settings.Key(GameAction.MoveRight)) + ", "
+                          + ClientSettings.KeyName(gameInstance.Settings.Key(GameAction.Jump)) + "/SHIFT UP/DOWN, "
+                          + ClientSettings.KeyName(gameInstance.Settings.Key(GameAction.ChangeTeam)) + " TO JOIN A TEAM",
+                    new Vector2(ScreenWidth / 2, ScreenHeight - 50), Color.White, Color.Black);
 
             // Draw the chat buffer.
             if (_P.chatMode == ChatMessageType.SayAll)

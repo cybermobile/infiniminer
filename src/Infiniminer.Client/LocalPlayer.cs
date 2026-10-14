@@ -13,6 +13,7 @@ namespace Infiniminer
         public PlayerTeam Team = PlayerTeam.Red;
         public PlayerClass Class;
         public bool HasClass;              // chosen a class on this server
+        public bool Spectating;            // watching: no team, flying freely
         public bool Dead = true;
         public bool RespawnPending = false;
         public byte PositionEpoch = 0;     // the last position epoch the server gave us
@@ -75,6 +76,7 @@ namespace Infiniminer
         // Teams build in their own colours, so the blocks on offer change with the team.
         public void SetTeam(PlayerTeam team)
         {
+            Spectating = false;
             Team = team;
             Blocks = GameRules.GetBlocks(Class, team);
             BlockSelected = Math.Min(BlockSelected, Blocks.Length - 1);

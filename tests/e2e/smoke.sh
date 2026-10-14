@@ -164,7 +164,7 @@ shot host_settings
 press A                 # START GAME is selected
 wait_for "$work/client.log" "TRACE JOINED" 3 90
 wait_for "$work/client.log" "TRACE STATE TeamSelectionState" 2
-press DPadUp
+press DPadDown          # RED, BLUE, SPECTATE: down to BLUE
 press A
 wait_for "$work/client.log" "TRACE STATE ClassSelectionState" 2
 press A

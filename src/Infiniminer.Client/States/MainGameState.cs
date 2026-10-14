@@ -135,6 +135,8 @@ namespace Infiniminer.States
             // Update the player"s position.
             if (!_P.player.Dead)
                 UpdatePlayerPosition(gameTime, keyState);
+            else if (_P.player.Spectating)
+                FlySpectator(gameTime, keyState);
             
             // Update the camera regardless of if we"re alive or not.
             _P.UpdateCamera(gameTime);
@@ -289,6 +291,38 @@ namespace Infiniminer.States
             }
         }
 
+        public const float SpectatorSpeed = 12;
+
+        // Spectators fly where they look, through anything: movement keys or the left stick, jump (or A) to rise,
+        // shift (or B) to sink.
+        void FlySpectator(GameTime gameTime, KeyboardState keyState)
+        {
+            if (_P.chatMode != ChatMessageType.None || !_SM.WindowHasFocus())
+                return;
+            Vector3 look = _P.playerCamera.GetLookVector(), right = _P.playerCamera.GetRightVector();
+            Vector3 move = Vector3.Zero;
+            if (Game.Settings.IsDown(keyState, GameAction.MoveForward))
+                move += look;
+            if (Game.Settings.IsDown(keyState, GameAction.MoveBack))
+                move -= look;
+            if (Game.Settings.IsDown(keyState, GameAction.MoveRight))
+                move += right;
+            if (Game.Settings.IsDown(keyState, GameAction.MoveLeft))
+                move -= right;
+            move += look * Pad.LeftStick.Y + right * Pad.LeftStick.X;
+            if (Game.Settings.IsDown(keyState, GameAction.Jump) || Pad.IsDown(Buttons.A))
+                move += Vector3.UnitY;
+            if (keyState.IsKeyDown(Keys.LeftShift) || keyState.IsKeyDown(Keys.RightShift) || Pad.IsDown(Buttons.B))
+                move -= Vector3.UnitY;
+            if (move == Vector3.Zero)
+                return;
+            if (move.Length() > 1)
+                move.Normalize();
+            Vector3 position = _P.player.Position + move * SpectatorSpeed * (float)gameTime.ElapsedGameTime.TotalSeconds;
+            float size = _P.mapSize;
+            _P.player.Position = Vector3.Clamp(position, new Vector3(-8, -8, -8), new Vector3(size + 8, size + 24, size + 8));
+        }
+
         private bool TryToMoveTo(Vector3 moveVector, GameTime gameTime)
         {
             Vector3 target = _P.player.Position + moveVector;
@@ -404,7 +438,12 @@ namespace Infiniminer.States
                 _P.chatMode = ChatMessageType.SayAll;
 
             if (key == Game.Settings.Key(GameAction.SayTeam))
-                _P.chatMode = _P.player.Team == PlayerTeam.Red ? ChatMessageType.SayRedTeam : ChatMessageType.SayBlueTeam;
+                _P.chatMode = _P.player.Spectating ? ChatMessageType.SayAll
+                    : _P.player.Team == PlayerTeam.Red ? ChatMessageType.SayRedTeam : ChatMessageType.SayBlueTeam;
+
+            // Spectators can join a team at any time.
+            if (_P.player.Spectating && key == Game.Settings.Key(GameAction.ChangeTeam))
+                nextState = typeof(TeamSelectionState);
 
             if (!_P.player.Dead)
             {
@@ -601,6 +640,8 @@ namespace Infiniminer.States
         // Come back to life once the death screen has had a moment.
         void TryRespawn()
         {
+            if (_P.player.Spectating)
+                return;
             if (_P.player.Dead && !_P.player.RespawnPending && _P.screenEffectCounter > 2)
                 _P.RespawnPlayer();
         }

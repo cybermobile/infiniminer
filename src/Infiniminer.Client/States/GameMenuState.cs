@@ -24,7 +24,7 @@ namespace Infiniminer.States
 
         bool CanChangeClass
         {
-            get { return _P.player.Position.Y > _P.SurfaceHeight; }
+            get { return !_P.player.Spectating && _P.player.Position.Y > _P.SurfaceHeight; }
         }
 
         public override void OnEnter(Type oldState)

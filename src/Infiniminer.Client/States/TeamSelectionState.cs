@@ -13,12 +13,13 @@ namespace Infiniminer.States
         Type nextState = null;
         SpriteFontBase uiFont;
         bool canCancel = false;
-        int highlighted = 0;            // 0 red, 1 blue: the keyboard/controller selection
+        int highlighted = 0;            // 0 red, 1 blue, 2 spectate: the keyboard/controller selection
         bool showHighlight = false;     // shown once the keyboard or controller is used
 
-        ClickRegion[] clkTeamMenu = new ClickRegion[2] {
+        ClickRegion[] clkTeamMenu = new ClickRegion[3] {
             new ClickRegion(new Rectangle(229,156,572,190), "red"), 
-            new ClickRegion(new Rectangle(135,424,761,181), "blue")
+            new ClickRegion(new Rectangle(135,424,761,181), "blue"),
+            new ClickRegion(new Rectangle(392,664,240,36), "spectate"),
         };
 
         public override void OnEnter(Type oldState)
@@ -34,7 +35,7 @@ namespace Infiniminer.States
 
             if (oldState == typeof(MainGameState) || oldState == typeof(GameMenuState))
                 canCancel = true;
-            highlighted = _P.player.Team == PlayerTeam.Blue ? 1 : 0;
+            highlighted = _P.player.Spectating ? 2 : _P.player.Team == PlayerTeam.Blue ? 1 : 0;
             showHighlight = _SM.UsingGamePad;
         }
 
@@ -86,6 +87,7 @@ namespace Infiniminer.States
                 QuickDrawText(spriteBatch, _SM.UsingGamePad ? "B: BACK TO THE GAME" : "ESC: BACK TO THE GAME", 725, new Color(150, 150, 150));
             QuickDrawText(spriteBatch, "" + redTeamCount + " PLAYERS", 360, InfiniminerGame.IM_RED);
             QuickDrawText(spriteBatch, "" + blueTeamCount + " PLAYERS", 620, InfiniminerGame.IM_BLUE);
+            QuickDrawText(spriteBatch, "[ SPECTATE ]", 672, Color.White);
             if (showHighlight)
                 Game.Assets.DrawOutline(spriteBatch, clkTeamMenu[highlighted].Rectangle, Color.White);
             spriteBatch.End();
@@ -98,12 +100,17 @@ namespace Infiniminer.States
             if (key == Keys.Up || key == Keys.Down || key == Keys.Left || key == Keys.Right)
             {
                 if (showHighlight)
-                    highlighted = 1 - highlighted;
+                    highlighted = (highlighted + (key == Keys.Up || key == Keys.Left ? 2 : 1)) % 3;
                 showHighlight = true;
                 _P.PlaySound(InfiniminerSound.ClickLow);
             }
             if ((key == Keys.Enter || key == Keys.Space) && showHighlight)
-                ChooseTeam(highlighted == 0 ? PlayerTeam.Red : PlayerTeam.Blue);
+            {
+                if (highlighted == 2)
+                    Spectate();
+                else
+                    ChooseTeam(highlighted == 0 ? PlayerTeam.Red : PlayerTeam.Blue);
+            }
         }
 
         void ChooseTeam(PlayerTeam team)
@@ -115,6 +122,13 @@ namespace Infiniminer.States
                 _P.SetPlayerTeam(team);
                 nextState = typeof(ClassSelectionState);
             }
+            _P.PlaySound(InfiniminerSound.ClickHigh);
+        }
+
+        void Spectate()
+        {
+            _P.Spectate();
+            nextState = typeof(MainGameState);
             _P.PlaySound(InfiniminerSound.ClickHigh);
         }
 
@@ -137,6 +151,9 @@ namespace Infiniminer.States
                     break;
                 case "blue":
                     ChooseTeam(PlayerTeam.Blue);
+                    break;
+                case "spectate":
+                    Spectate();
                     break;
             }
         }

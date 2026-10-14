@@ -1150,10 +1150,10 @@ namespace Infiniminer
                 case InfiniminerMessage.PlayerSetTeam:
                     {
                         PlayerTeam playerTeam = (PlayerTeam)msgBuffer.GetByte();
-                        if (playerTeam != PlayerTeam.Red && playerTeam != PlayerTeam.Blue)
-                            break;
-
-                        ChooseTeam(player, playerTeam);
+                        if (playerTeam == PlayerTeam.None)
+                            Spectate(player);
+                        else if (playerTeam == PlayerTeam.Red || playerTeam == PlayerTeam.Blue)
+                            ChooseTeam(player, playerTeam);
                     }
                     break;
 
@@ -1168,7 +1168,8 @@ namespace Infiniminer
 
                 case InfiniminerMessage.PlayerAlive:
                     {
-                        if (!player.Alive)
+                        // Only players on a team, with a class, come back to life (not spectators).
+                        if (!player.Alive && player.Team != PlayerTeam.None && player.HasClass)
                             RespawnPlayer(player);
                     }
                     break;
@@ -1360,6 +1361,18 @@ namespace Infiniminer
                     break;
             }
             SendResourceUpdate(player);
+        }
+
+        // Watching rather than playing: no team, no body, nothing to dig or build with.
+        public void Spectate(ServerPlayer player)
+        {
+            if (player.Alive)
+                KillPlayer(player, "");
+            ConsoleWrite("SPECTATE: " + player.Handle);
+            player.Team = PlayerTeam.None;
+            SendResourceUpdate(player);
+            SendPlayerSetTeam(player);
+            BalanceBots();
         }
 
         public void ChooseTeam(ServerPlayer player, PlayerTeam playerTeam)

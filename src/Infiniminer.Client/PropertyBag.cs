@@ -131,6 +131,12 @@ namespace Infiniminer
         {
             if (player.Dead && screenEffect == ScreenEffect.Death)
                 return;
+            // A spectator has no body to lose (the server confirms the switch with a "death").
+            if (player.Spectating)
+            {
+                player.Dead = true;
+                return;
+            }
 
             PlaySound(InfiniminerSound.Death);
             player.Position = new Vector3(randGen.Next(2, mapSize - 2), mapSize + 2, randGen.Next(2, mapSize - 2));
@@ -273,6 +279,21 @@ namespace Infiniminer
 
             player.SetTeam(team);
             Send(ClientMessages.SetTeam(team));
+        }
+
+        // Watch instead of play: no team, no body; the camera flies freely from above the middle of the map.
+        public void Spectate()
+        {
+            if (!IsConnected)
+                return;
+            player.Spectating = true;
+            player.Team = PlayerTeam.None;
+            player.Dead = true;
+            player.RespawnPending = false;
+            player.Velocity = Vector3.Zero;
+            player.Position = new Vector3(mapSize / 2f, mapSize + 4, mapSize / 2f);
+            screenEffect = ScreenEffect.None;
+            Send(ClientMessages.SetTeam(PlayerTeam.None));
         }
 
         public void SetPlayerClass(PlayerClass playerClass)
@@ -443,7 +464,7 @@ namespace Infiniminer
 
         public void SendPlayerUpdate()
         {
-            if (!IsConnected)
+            if (!IsConnected || player.Spectating)
                 return;
 
             Send(ClientMessages.PlayerUpdate(player.Position.ToNumerics(), playerCamera.GetLookVector().ToNumerics(),
