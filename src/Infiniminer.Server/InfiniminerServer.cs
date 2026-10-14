@@ -481,6 +481,14 @@ namespace Infiniminer
             netServer.AutoRecycle = true;
             netServer.UnconnectedMessagesEnabled = true;
             netServer.BroadcastReceiveEnabled = true;
+            if (config.DebugLatency > 0)
+            {
+                // Testing aid: delay every packet the server sends and receives.
+                netServer.SimulateLatency = true;
+                netServer.SimulationMinLatency = config.DebugLatency / 2;
+                netServer.SimulationMaxLatency = config.DebugLatency / 2 + config.DebugLatency / 10;
+                ConsoleWrite("SIMULATING " + config.DebugLatency + "MS OF LATENCY");
+            }
             if (!netServer.Start(config.Port))
             {
                 ConsoleWrite("ERROR: COULD NOT LISTEN ON PORT " + config.Port);

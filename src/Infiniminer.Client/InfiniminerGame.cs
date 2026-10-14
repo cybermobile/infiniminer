@@ -152,8 +152,19 @@ namespace Infiniminer
 
         public const string INFINIMINER_VERSION = GameConstants.Version;
         public const int GROUND_LEVEL = GameConstants.GroundLevel;
-        public static Color IM_BLUE = new Color(80, 150, 255);
-        public static Color IM_RED = new Color(222, 24, 24);
+        // Team colours. Colour-blind mode uses vermilion and sky blue (from the Okabe-Ito palette), which stay
+        // distinct for all common kinds of colour blindness, and adds [R]/[B] tags to team chat.
+        public static bool ColorBlindMode = false;
+
+        public static Color IM_BLUE
+        {
+            get { return ColorBlindMode ? new Color(86, 180, 233) : new Color(80, 150, 255); }
+        }
+
+        public static Color IM_RED
+        {
+            get { return ColorBlindMode ? new Color(213, 94, 0) : new Color(222, 24, 24); }
+        }
 
         public InfiniminerGame(string[] args)
         {
@@ -381,7 +392,10 @@ namespace Infiniminer
                     {
                         propertyBag.constructionGunAnimation = msgBuffer.GetFloat();
                         if (propertyBag.constructionGunAnimation <= -0.1)
+                        {
                             propertyBag.PlaySound(InfiniminerSound.RadarSwitch);
+                            propertyBag.blockPredictor.OnBuildFailed();
+                        }
                     }
                     break;
 
@@ -408,6 +422,7 @@ namespace Infiniminer
                         BlockType blockType = (BlockType)msgBuffer.GetByte();
                         if (blockType >= BlockType.MAXIMUM)
                             break;
+                        propertyBag.blockPredictor.OnServerBlockSet(x, y, z);
                         if (blockType == BlockType.None)
                         {
                             if (propertyBag.blockEngine.BlockAtPoint(new Vector3(x, y, z)) != BlockType.None)
@@ -623,6 +638,7 @@ namespace Infiniminer
 
             Settings = ClientSettings.Load(ConfigPath);
             NoSound = Settings.NoSound;
+            ColorBlindMode = Settings.ColorBlind;
             graphicsDeviceManager.IsFullScreen = Settings.Fullscreen;
             graphicsDeviceManager.PreferredBackBufferWidth = Settings.Width;
             graphicsDeviceManager.PreferredBackBufferHeight = Settings.Height;

@@ -287,6 +287,9 @@ namespace Infiniminer
                         else if (blockTexture == BlockTexture.Spikes && faceDir == (int)BlockFaceDirection.YDecreasing)
                             shade = 1.5f;
 
+                        // Force fields shimmer gently so they read as energy rather than glass.
+                        if (renderTranslucent)
+                            shade *= 0.9f + 0.2f * MathF.Sin((float)gameTime.TotalGameTime.TotalSeconds * 2.5f + r * 0.7f);
                         basicEffect.DiffuseColor = new Vector3(shade);
                         basicEffect.FogColor = lodColor * shade;
                         basicEffect.CurrentTechnique.Passes[0].Apply();

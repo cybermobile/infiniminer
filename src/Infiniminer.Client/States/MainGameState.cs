@@ -34,6 +34,10 @@ namespace Infiniminer.States
             // Update network stuff.
             Game.UpdateNetwork(gameTime);
 
+            // Undo predicted block changes the server never confirmed.
+            _P.currentTime = gameTime.TotalGameTime.TotalSeconds;
+            _P.blockPredictor.Update(_P.currentTime);
+
             // Update the current screen effect.
             _P.screenEffectCounter += gameTime.ElapsedGameTime.TotalSeconds;
             _P.playerCamera.FieldOfView = Game.Settings.FieldOfView;

@@ -58,7 +58,7 @@ CONFIGURATION
 
 Game settings can be changed in the OPTIONS menu (on the server browser, or Escape+O in game): name,
 resolution, fullscreen, interface scale, field of view, mouse sensitivity, invert mouse, volume, bloom,
-FPS counter and key bindings. The window can also be resized freely; menus scale to fit it.
+colour-blind mode, FPS counter and key bindings. The window can also be resized freely; menus scale to fit it.
 
 Settings are saved in client.config.txt. It and server.config.txt (in bin/, copied next to the
 executables on build) are read from the current directory if present, otherwise from next to the
@@ -73,6 +73,7 @@ executable. Other new settings:
   winningcashperplayer  (server) extra cash needed to win per connected player (default 0).
   autobalance (server) players can't join a team that already has more players (default false).
   mapsize     (server) size of the world cube: 64 (original), 96 or 128 (default 64).
+  debuglatency (server) milliseconds of simulated network latency, for testing (default 0).
 
 Fonts: the original used the 04b08 and 04b03b bitmap fonts by Yuji Oshimoto, which are not
 redistributed here (http://www.dsg4.com/04/extra/bitmap/). The game ships with the look-alike

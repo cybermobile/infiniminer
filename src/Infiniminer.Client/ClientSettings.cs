@@ -40,6 +40,7 @@ namespace Infiniminer
         public int MouseSensitivity = 5;    // 1-20; 5 matches the original game
         public int FieldOfView = 70;        // degrees
         public int UiScale = 0;             // 0 = automatic
+        public bool ColorBlind = false;
         public string ServerListUrl = "";
         public Dictionary<GameAction, Keys> KeyBindings = DefaultKeyBindings();
 
@@ -111,6 +112,7 @@ namespace Infiniminer
             settings.MouseSensitivity = Math.Clamp(dataFile.GetInt("sensitivity", settings.MouseSensitivity), MinSensitivity, MaxSensitivity);
             settings.FieldOfView = Math.Clamp(dataFile.GetInt("fov", settings.FieldOfView), MinFieldOfView, MaxFieldOfView);
             settings.UiScale = Math.Clamp(dataFile.GetInt("uiscale", settings.UiScale), 0, MaxUiScale);
+            settings.ColorBlind = dataFile.GetBool("colorblind", settings.ColorBlind);
             settings.ServerListUrl = dataFile.GetString("serverlist", settings.ServerListUrl);
             foreach (GameAction action in Enum.GetValues<GameAction>())
                 if (Enum.TryParse(dataFile.GetString(ConfigKey(action), ""), true, out Keys key) && key != Keys.None)
@@ -143,6 +145,9 @@ namespace Infiniminer
             Line("sensitivity = " + MouseSensitivity.ToString(CultureInfo.InvariantCulture));
             Line("fov = " + FieldOfView.ToString(CultureInfo.InvariantCulture));
             Line("uiscale = " + UiScale.ToString(CultureInfo.InvariantCulture));
+            Line();
+            Line("# Colour-blind friendly team colours, and [R]/[B] tags on team chat.");
+            Line("colorblind = " + Bool(ColorBlind));
             Line();
             Line("# This value specifies the override volume multiplier, for people who find the sounds too loud.");
             Line("volume = " + Volume.ToString("0.0#", CultureInfo.InvariantCulture));

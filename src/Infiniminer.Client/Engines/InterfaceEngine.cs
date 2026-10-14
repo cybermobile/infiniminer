@@ -347,7 +347,11 @@ namespace Infiniminer
                 if (_P.teamWinners == PlayerTeam.None && _P.winningCash > 0)
                     RenderMessageCenter(spriteBatch, "THE FIRST TEAM TO EARN $" + _P.winningCash + " WINS", new Vector2(ScreenWidth / 2, 150), Color.White, new Color(0, 0, 0, 0));
 
-                int drawY = 200;
+                // Team headings, so the columns don't rely on colour alone.
+                RenderMessageCenter(spriteBatch, "RED TEAM", new Vector2(ScreenWidth / 4, 175), InfiniminerGame.IM_RED, new Color(0, 0, 0, 0));
+                RenderMessageCenter(spriteBatch, "BLUE TEAM", new Vector2(ScreenWidth * 3 / 4, 175), InfiniminerGame.IM_BLUE, new Color(0, 0, 0, 0));
+
+                int drawY = 210;
                 foreach (Player p in _P.playerList.Values)
                 {
                     if (p.Team != PlayerTeam.Red)
@@ -355,7 +359,7 @@ namespace Infiniminer
                     RenderMessageCenter(spriteBatch, p.Handle + " ( $" + p.Score + " )", new Vector2(ScreenWidth/4, drawY), InfiniminerGame.IM_RED, new Color(0, 0, 0, 0));
                     drawY += 35;
                 }
-                drawY = 200;
+                drawY = 210;
                 foreach (Player p in _P.playerList.Values)
                 {
                     if (p.Team != PlayerTeam.Blue)
@@ -383,8 +387,13 @@ namespace Infiniminer
                     chatColor = InfiniminerGame.IM_RED;
                 if (_P.chatBuffer[i].type == ChatMessageType.SayBlueTeam)
                     chatColor = InfiniminerGame.IM_BLUE;
-                spriteBatch.DrawString(uiFont, _P.chatBuffer[i].message, new Vector2(22, ScreenHeight - 114 - 16 * i), Color.Black);
-                spriteBatch.DrawString(uiFont, _P.chatBuffer[i].message, new Vector2(20, ScreenHeight - 116 - 16 * i), chatColor);
+                string chatText = _P.chatBuffer[i].message;
+                if (InfiniminerGame.ColorBlindMode && _P.chatBuffer[i].type == ChatMessageType.SayRedTeam)
+                    chatText = "[R] " + chatText;
+                else if (InfiniminerGame.ColorBlindMode && _P.chatBuffer[i].type == ChatMessageType.SayBlueTeam)
+                    chatText = "[B] " + chatText;
+                spriteBatch.DrawString(uiFont, chatText, new Vector2(22, ScreenHeight - 114 - 16 * i), Color.Black);
+                spriteBatch.DrawString(uiFont, chatText, new Vector2(20, ScreenHeight - 116 - 16 * i), chatColor);
             }
 
             // Draw the player radar.

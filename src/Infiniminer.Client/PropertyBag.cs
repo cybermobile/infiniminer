@@ -42,6 +42,8 @@ namespace Infiniminer
         public EventBasedNetListener netListener = null;
         public NetPeer serverPeer = null;
         public bool downloadComplete = false;
+        public BlockPredictor blockPredictor;
+        public double currentTime = 0;
         public List<ServerInformation> discoveredServers = new List<ServerInformation>();
         public Dictionary<uint, Player> playerList = new Dictionary<uint, Player>();
         public bool[,] mapLoadProgress = null;
@@ -121,11 +123,16 @@ namespace Infiniminer
             netClient.Start();
 
             // Initialize engines.
+        // (The block predictor talks to whichever block engine is current; it is replaced when the map size changes.)
             blockEngine = new BlockEngine(gameInstance);
             interfaceEngine = new InterfaceEngine(gameInstance);
             playerEngine = new PlayerEngine(gameInstance);
             skyplaneEngine = new SkyplaneEngine(gameInstance);
             particleEngine = new ParticleEngine(gameInstance);
+
+            blockPredictor = new BlockPredictor(
+                (x, y, z) => blockEngine.BlockAtPoint(new Vector3(x + 0.5f, y + 0.5f, z + 0.5f)),
+                SetBlockLocally);
 
             // Create a camera.
             playerCamera = new Camera(gameInstance.GraphicsDevice);
@@ -251,9 +258,15 @@ namespace Infiniminer
             if (!soundList.TryGetValue(sound, out SoundEffect effect))
                 return;
 
-            float distance = (position - playerPosition).Length();
+            Vector3 offset = position - playerPosition;
+            float distance = offset.Length();
             float volume = Math.Max(0, 10 - distance) / 10.0f * volumeLevel;
-            effect.Play(Math.Clamp(volume, 0, 1), 0, 0);
+
+            // Pan towards the side the sound came from (but not hard left/right, and less so up close).
+            float pan = 0;
+            if (distance > 0.5f)
+                pan = Vector3.Dot(offset / distance, playerCamera.GetRightVector()) * 0.8f * Math.Min(1, distance / 2);
+            effect.Play(Math.Clamp(volume, 0, 1), 0, Math.Clamp(pan, -1, 1));
         }
 
         public void PlaySoundForEveryone(InfiniminerSound sound, Vector3 position)
@@ -396,6 +409,62 @@ namespace Infiniminer
             Send(msgBuffer, NetChannel.ReliableUnordered);
         }
 
+        // Changes a block on our side only (used for predictions).
+        public void SetBlockLocally(int x, int y, int z, BlockType blockType)
+        {
+            if (blockEngine.BlockAtPoint(new Vector3(x + 0.5f, y + 0.5f, z + 0.5f)) != BlockType.None)
+                blockEngine.RemoveBlock((ushort)x, (ushort)y, (ushort)z);
+            if (blockType != BlockType.None)
+                blockEngine.AddBlock((ushort)x, (ushort)y, (ushort)z, blockType);
+        }
+
+        static (int x, int y, int z) BlockOf(Vector3 point)
+        {
+            return (GameConstants.ToBlock(point.X), GameConstants.ToBlock(point.Y), GameConstants.ToBlock(point.Z));
+        }
+
+        bool InsideMap((int x, int y, int z) block)
+        {
+            return block.x > 0 && block.y > 0 && block.z > 0 && block.x < mapSize - 1 && block.y < mapSize - 1 && block.z < mapSize - 1;
+        }
+
+        // Removes the block we're digging straight away if the server will (same ray and rules as the server).
+        void PredictDig(bool drill)
+        {
+            Vector3 hitPoint = Vector3.Zero, buildPoint = Vector3.Zero;
+            if (!blockEngine.RayCollision(playerPosition, playerCamera.GetLookVector(), 2, 10, ref hitPoint, ref buildPoint))
+                return;
+            BlockType hit = blockEngine.BlockAtPoint(hitPoint);
+            bool removed = hit == BlockType.Dirt || hit == BlockType.DirtSign || hit == BlockType.Ore
+                || ((hit == BlockType.Gold || hit == BlockType.Diamond) && playerWeight < playerWeightMax)
+                || (drill && hit == BlockType.Rock);
+            var block = BlockOf(hitPoint);
+            if (removed && InsideMap(block))
+                blockPredictor.Predict(block.x, block.y, block.z, BlockType.None, currentTime);
+        }
+
+        // Places the block we're building straight away if the server is likely to accept it.
+        void PredictBuild(BlockType blockType)
+        {
+            Vector3 hitPoint = Vector3.Zero, buildPoint = Vector3.Zero;
+            if (!blockEngine.RayCollision(playerPosition, playerCamera.GetLookVector(), 6, 25, ref hitPoint, ref buildPoint))
+                return;
+            if (playerOre < BlockInformation.GetCost(blockType) || blockEngine.BlockAtPoint(hitPoint) == BlockType.Lava)
+                return;
+            var block = BlockOf(buildPoint);
+            if (!InsideMap(block))
+                return;
+            // Nobody may be standing there (the server checks the same cells).
+            foreach (Player p in playerList.Values)
+            {
+                Vector3 position = p.ID == playerMyId ? playerPosition : p.Position;
+                if ((p.Alive || p.ID == playerMyId) && (int)position.X == block.x && (int)position.Z == block.z
+                    && ((int)position.Y == block.y || (int)position.Y - 1 == block.y))
+                    return;
+            }
+            blockPredictor.Predict(block.x, block.y, block.z, blockType, currentTime);
+        }
+
         public void FireDrill()
         {
             if (!IsConnected)
@@ -409,6 +478,7 @@ namespace Infiniminer
             msgBuffer.Put((byte)PlayerTools.Drill);
             msgBuffer.Put((byte)BlockType.None);
             Send(msgBuffer, NetChannel.ReliableUnordered);
+            PredictDig(true);
         }
 
         public void FirePickaxe()
@@ -423,7 +493,8 @@ namespace Infiniminer
             msgBuffer.Put(playerCamera.GetLookVector());
             msgBuffer.Put((byte)PlayerTools.Pickaxe);
             msgBuffer.Put((byte)BlockType.None);
-            Send(msgBuffer, NetChannel.ReliableUnordered); 
+            Send(msgBuffer, NetChannel.ReliableUnordered);
+            PredictDig(false);
         }
 
         public void FireConstructionGun(BlockType blockType)
@@ -441,6 +512,7 @@ namespace Infiniminer
             msgBuffer.Put((byte)PlayerTools.ConstructionGun);
             msgBuffer.Put((byte)blockType);
             Send(msgBuffer, NetChannel.ReliableUnordered);
+            PredictBuild(blockType);
         }
 
         public void FireDeconstructionGun()

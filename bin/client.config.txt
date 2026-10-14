@@ -28,6 +28,9 @@ sensitivity = 5
 fov = 70
 uiscale = 0
 
+# Colour-blind friendly team colours, and [R]/[B] tags on team chat.
+colorblind = false
+
 # Key bindings (names from https://docs.monogame.net/api/Microsoft.Xna.Framework.Input.Keys.html).
 # These can also be changed in game: OPTIONS > CONTROLS.
 key_moveforward = W

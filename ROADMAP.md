@@ -43,11 +43,11 @@ The original server trusted almost everything the client said.
 - [x] Better player collision: the body has width (corners of a 0.4-block footprint are tested), so it can't
       slip through diagonal gaps or press the camera into walls
 
-## 6. Feel and polish
-- [ ] Instant local feedback for digging and building
-- [ ] Stereo (panned) positional sound
-- [ ] Better looking translucent force fields
-- [ ] Colour-blind friendly team colours
+## 6. Feel and polish — done
+- [x] Instant local feedback for digging and building (predicted, rolled back if the server refuses)
+- [x] Stereo (panned) positional sound
+- [x] Force fields shimmer gently
+- [x] Colour-blind mode (Okabe-Ito team colours, [R]/[B] chat tags); team headings on the scoreboard
 
 ## 7. Admin and distribution
 - [ ] Ban by name, remote admin with a password

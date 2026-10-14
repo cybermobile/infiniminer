@@ -166,6 +166,12 @@ namespace Infiniminer.States
                 });
                 rows.Add(new Row
                 {
+                    Label = "COLOR-BLIND MODE",
+                    Value = () => OnOff(Settings.ColorBlind),
+                    Change = direction => { Settings.ColorBlind = !Settings.ColorBlind; InfiniminerGame.ColorBlindMode = Settings.ColorBlind; Changed(); },
+                });
+                rows.Add(new Row
+                {
                     Label = "SHOW FPS",
                     Value = () => OnOff(Settings.ShowFps),
                     Change = direction => { Settings.ShowFps = !Settings.ShowFps; Changed(); },
