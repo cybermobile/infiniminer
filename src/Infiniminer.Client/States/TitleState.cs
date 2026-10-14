@@ -10,9 +10,9 @@ namespace Infiniminer.States
     {
         Texture2D texMenu;
         Rectangle drawRect;
-        string nextState = null;
+        Type nextState = null;
 
-        public override void OnEnter(string oldState)
+        public override void OnEnter(Type oldState)
         {
             _SM.IsMouseVisible = true;
 
@@ -22,12 +22,12 @@ namespace Infiniminer.States
             drawRect = new Rectangle(0, 0, 1024, 1024);
         }
 
-        public override void OnLeave(string newState)
+        public override void OnLeave(Type newState)
         {
 
         }
 
-        public override string OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
+        public override Type OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
         {
             // Do network stuff.
             //Game.UpdateNetwork(gameTime);
@@ -66,7 +66,7 @@ namespace Infiniminer.States
             Point menuPoint = Game.ToMenu(x, y);
             x = menuPoint.X;
             y = menuPoint.Y;
-            nextState = "Infiniminer.States.ServerBrowserState";
+            nextState = typeof(ServerBrowserState);
             _P.PlaySound(InfiniminerSound.ClickHigh);
         }
 

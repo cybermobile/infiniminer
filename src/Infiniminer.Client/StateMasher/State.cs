@@ -21,15 +21,15 @@ namespace StateMasher
             get { return (Infiniminer.InfiniminerGame)_SM; }
         }
 
-        public virtual void OnEnter(string oldState)
+        public virtual void OnEnter(Type oldState)
         {
         }
 
-        public virtual void OnLeave(string newState)
+        public virtual void OnLeave(Type newState)
         {
         }
 
-        public virtual string OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
+        public virtual Type OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
         {
             return null;
         }

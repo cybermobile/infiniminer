@@ -1458,46 +1458,12 @@ namespace Infiniminer
             int z = GameConstants.ToBlock(hitPoint.Z);
 
             // Figure out what the result is.
-            bool removeBlock = false;
-            uint giveOre = 0;
-            uint giveCash = 0;
-            uint giveWeight = 0;
-            InfiniminerSound sound = InfiniminerSound.DigDirt;
-
-            switch (BlockAtPoint(hitPoint))
-            {
-                case BlockType.Dirt:
-                case BlockType.DirtSign:
-                    removeBlock = true;
-                    sound = InfiniminerSound.DigDirt;
-                    break;
-
-                case BlockType.Ore:
-                    removeBlock = true;
-                    giveOre = 20;
-                    sound = InfiniminerSound.DigMetal;
-                    break;
-
-                case BlockType.Gold:
-                    removeBlock = true;
-                    giveWeight = 1;
-                    giveCash = 100;
-                    sound = InfiniminerSound.DigMetal;
-                    break;
-
-                case BlockType.Diamond:
-                    removeBlock = true;
-                    giveWeight = 1;
-                    giveCash = 1000;
-                    sound = InfiniminerSound.DigMetal;
-                    break;
-
-                case BlockType.Rock:
-                    removeBlock = drill;
-                    break;
-            }
-            if (drill)
-                sound = InfiniminerSound.Drill;
+            DigResult dig = GameRules.Dig(BlockAtPoint(hitPoint), drill);
+            bool removeBlock = dig.Removes;
+            uint giveOre = dig.Ore;
+            uint giveCash = dig.Cash;
+            uint giveWeight = dig.Weight;
+            InfiniminerSound sound = dig.Sound;
 
             if (giveOre > 0)
             {

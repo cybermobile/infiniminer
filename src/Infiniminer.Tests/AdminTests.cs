@@ -11,10 +11,7 @@ namespace Infiniminer.Tests
     {
         static void Say(Bot bot, string text)
         {
-            NetDataWriter chat = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
-            chat.Put((byte)ChatMessageType.SayAll);
-            chat.Put(text);
-            bot.Send(chat, NetChannel.ReliableInOrder3);
+            bot.Send(ClientMessages.Chat(ChatMessageType.SayAll, text));
         }
 
         static bool Heard(Bot bot, string fragment)

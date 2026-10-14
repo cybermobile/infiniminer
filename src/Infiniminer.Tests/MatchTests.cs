@@ -53,13 +53,9 @@ namespace Infiniminer.Tests
                 Bot bot = new Bot();
                 bot.Connect(Server.Port, handle: handle);
                 WaitFor(bot, () => bot.MapComplete && bot.MyId != 0, "join");
-                NetDataWriter setTeam = NetExtensions.CreateMessage(InfiniminerMessage.PlayerSetTeam);
-                setTeam.Put((byte)team);
-                bot.Send(setTeam, NetChannel.ReliableInOrder2);
-                NetDataWriter selectClass = NetExtensions.CreateMessage(InfiniminerMessage.SelectClass);
-                selectClass.Put((byte)playerClass);
-                bot.Send(selectClass, NetChannel.ReliableInOrder2);
-                bot.Send(NetExtensions.CreateMessage(InfiniminerMessage.PlayerAlive), NetChannel.ReliableInOrder2);
+                bot.Send(ClientMessages.SetTeam(team));
+                bot.Send(ClientMessages.SelectClass(playerClass));
+                bot.Send(ClientMessages.Respawn());
                 WaitFor(bot, () => bot.PositionsReceived > 0, "spawn");
                 return bot;
             }
@@ -150,12 +146,7 @@ namespace Infiniminer.Tests
             Assert.NotEqual(0, gold.x);
             Vector3 eye = new Vector3(gold.x + 0.5f, gold.y + 0.5f, gold.z + 0.5f) + gold.face;
             server.Teleport(bot, "Bot", eye);
-            NetDataWriter dig = NetExtensions.CreateMessage(InfiniminerMessage.UseTool);
-            dig.Put(eye);
-            dig.Put(-gold.face);
-            dig.Put((byte)PlayerTools.Pickaxe);
-            dig.Put((byte)BlockType.None);
-            bot.Send(dig, NetChannel.ReliableUnordered);
+            bot.Send(ClientMessages.UseTool(eye, -gold.face, PlayerTools.Pickaxe, BlockType.None));
             server.WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.ResourceUpdate).Any(r => { r.GetUInt(); return r.GetUInt() == 100; }), "gold dug");
 
             // ...and bring it to the surface.

@@ -119,11 +119,7 @@ namespace Infiniminer.Tests
 
             public void Connect(int port, string version = GameConstants.Version, string handle = "Bot")
             {
-                NetDataWriter connect = new NetDataWriter();
-                connect.Put(GameConstants.AppIdentifier);
-                connect.Put(handle);
-                connect.Put(version);
-                Peer = Net.Connect(new IPEndPoint(IPAddress.Loopback, port), connect);
+                Peer = Net.Connect(new IPEndPoint(IPAddress.Loopback, port), ClientMessages.ConnectRequest(handle, version));
             }
 
             public void Send(NetDataWriter writer, NetChannel channel)
@@ -131,15 +127,15 @@ namespace Infiniminer.Tests
                 Peer.Send(writer, channel);
             }
 
+            // Messages are encoded exactly as the game client encodes them.
+            public void Send(OutgoingMessage message)
+            {
+                Peer.Send(message.Data, message.Channel);
+            }
+
             public void SendPosition(Vector3 position)
             {
-                NetDataWriter update = NetExtensions.CreateMessage(InfiniminerMessage.PlayerUpdate);
-                update.Put(position);
-                update.Put(-Vector3.UnitZ);
-                update.Put((byte)PlayerTools.Pickaxe);
-                update.Put(false);
-                update.Put(Epoch);
-                Send(update, NetChannel.UnreliableInOrder1);
+                Send(ClientMessages.PlayerUpdate(position, -Vector3.UnitZ, PlayerTools.Pickaxe, false, Epoch));
             }
 
             public bool WasKilled(string message)
@@ -183,15 +179,11 @@ namespace Infiniminer.Tests
             bot.Connect(server.Port);
             WaitFor(bot, () => bot.MapComplete && bot.MyId != 0, "map download and join");
 
-            NetDataWriter setTeam = NetExtensions.CreateMessage(InfiniminerMessage.PlayerSetTeam);
-            setTeam.Put((byte)team);
-            bot.Send(setTeam, NetChannel.ReliableUnordered);
+            bot.Send(ClientMessages.SetTeam(team));
 
-            NetDataWriter selectClass = NetExtensions.CreateMessage(InfiniminerMessage.SelectClass);
-            selectClass.Put((byte)playerClass);
-            bot.Send(selectClass, NetChannel.ReliableUnordered);
+            bot.Send(ClientMessages.SelectClass(playerClass));
 
-            bot.Send(NetExtensions.CreateMessage(InfiniminerMessage.PlayerAlive), NetChannel.ReliableUnordered);
+            bot.Send(ClientMessages.Respawn());
             WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.PlayerAlive).Any() && bot.PositionsReceived > 0, "respawn");
             return bot;
         }
@@ -212,12 +204,7 @@ namespace Infiniminer.Tests
 
         static void UseTool(Bot bot, Vector3 position, Vector3 heading, PlayerTools tool, BlockType blockType = BlockType.None)
         {
-            NetDataWriter msg = NetExtensions.CreateMessage(InfiniminerMessage.UseTool);
-            msg.Put(position);
-            msg.Put(heading);
-            msg.Put((byte)tool);
-            msg.Put((byte)blockType);
-            bot.Send(msg, NetChannel.ReliableUnordered);
+            bot.Send(ClientMessages.UseTool(position, heading, tool, blockType));
         }
 
         static bool HasBlockSet(Bot bot, int x, int y, int z, BlockType type)
@@ -301,10 +288,7 @@ namespace Infiniminer.Tests
             bot.Peer.Send(new byte[] { (byte)InfiniminerMessage.UseTool, 1, 2 }, DeliveryMethod.ReliableOrdered);
             bot.Peer.Send(new byte[] { (byte)InfiniminerMessage.PlaySound, 250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, DeliveryMethod.ReliableOrdered);
 
-            NetDataWriter chat = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
-            chat.Put((byte)ChatMessageType.SayAll);
-            chat.Put("still alive");
-            bot.Send(chat, NetChannel.ReliableInOrder3);
+            bot.Send(ClientMessages.Chat(ChatMessageType.SayAll, "still alive"));
             WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.ChatMessage).Any(r => { r.GetByte(); return r.GetString() == "Bot (ALL): still alive"; }), "chat echo");
             Assert.DoesNotContain(bot.MessagesOfType(InfiniminerMessage.PlaySound), r => r.GetByte() == 250);
         }
@@ -396,9 +380,7 @@ namespace Infiniminer.Tests
         public void PingsCannotImpersonateOtherPlayers()
         {
             using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);
-            NetDataWriter ping = NetExtensions.CreateMessage(InfiniminerMessage.PlayerPing);
-            ping.Put(12345u);
-            bot.Send(ping, NetChannel.ReliableUnordered);
+            bot.Send(ClientMessages.Ping(12345u));
             WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.PlayerPing).Any(), "ping");
             Assert.All(bot.MessagesOfType(InfiniminerMessage.PlayerPing), r => Assert.Equal(bot.MyId, r.GetUInt()));
         }
@@ -407,9 +389,7 @@ namespace Infiniminer.Tests
         public void ChangingTeamWhileAliveKillsYou()
         {
             using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);
-            NetDataWriter setTeam = NetExtensions.CreateMessage(InfiniminerMessage.PlayerSetTeam);
-            setTeam.Put((byte)PlayerTeam.Blue);
-            bot.Send(setTeam, NetChannel.ReliableInOrder2);
+            bot.Send(ClientMessages.SetTeam(PlayerTeam.Blue));
             WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.PlayerDead).Any(r => r.GetUInt() == bot.MyId), "death on team change");
         }
 
@@ -419,10 +399,7 @@ namespace Infiniminer.Tests
             using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);
             for (int i = 0; i < 20; i++)
             {
-                NetDataWriter chat = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
-                chat.Put((byte)ChatMessageType.SayAll);
-                chat.Put("spam " + i);
-                bot.Send(chat, NetChannel.ReliableInOrder3);
+                bot.Send(ClientMessages.Chat(ChatMessageType.SayAll, "spam " + i));
             }
             WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.ChatMessage).Any(r => { r.GetByte(); return r.GetString().StartsWith("Bot (ALL): spam 4"); }), "chat");
             Thread.Sleep(300);

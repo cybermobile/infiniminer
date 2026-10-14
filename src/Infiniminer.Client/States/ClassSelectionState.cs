@@ -10,7 +10,7 @@ namespace Infiniminer.States
     {
         Texture2D texMenuRed, texMenuBlue;
         Rectangle drawRect;
-        string nextState = null;
+        Type nextState = null;
 
         ClickRegion[] clkClassMenu = new ClickRegion[4] {
             new ClickRegion(new Rectangle(54,168,142,190), "miner"), 
@@ -19,7 +19,7 @@ namespace Infiniminer.States
             new ClickRegion(new Rectangle(819,172,133,190), "sapper")
         };
 
-        public override void OnEnter(string oldState)
+        public override void OnEnter(Type oldState)
         {
             _SM.IsMouseVisible = true;
 
@@ -32,12 +32,12 @@ namespace Infiniminer.States
             _P.KillPlayer("");
         }
 
-        public override void OnLeave(string newState)
+        public override void OnLeave(Type newState)
         {
             _P.RespawnPlayer();
         }
 
-        public override string OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
+        public override Type OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
         {
             // Do network stuff.
             Game.UpdateNetwork(gameTime);
@@ -84,22 +84,22 @@ namespace Infiniminer.States
             {
                 case "miner":
                     _P.SetPlayerClass(PlayerClass.Miner);
-                    nextState = "Infiniminer.States.MainGameState";
+                    nextState = typeof(MainGameState);
                     _P.PlaySound(InfiniminerSound.ClickHigh);
                     break;
                 case "engineer":
                     _P.SetPlayerClass(PlayerClass.Engineer);
-                    nextState = "Infiniminer.States.MainGameState";
+                    nextState = typeof(MainGameState);
                     _P.PlaySound(InfiniminerSound.ClickHigh);
                     break;
                 case "prospector":
                     _P.SetPlayerClass(PlayerClass.Prospector);
-                    nextState = "Infiniminer.States.MainGameState";
+                    nextState = typeof(MainGameState);
                     _P.PlaySound(InfiniminerSound.ClickHigh);
                     break;
                 case "sapper":
                     _P.SetPlayerClass(PlayerClass.Sapper);
-                    nextState = "Infiniminer.States.MainGameState";
+                    nextState = typeof(MainGameState);
                     _P.PlaySound(InfiniminerSound.ClickHigh);
                     break;
             }

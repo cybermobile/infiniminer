@@ -10,7 +10,8 @@ namespace Infiniminer
     {
         double timeSinceLastUpdate = 0;
         GameTime currentGameTime = new GameTime();
-        string deferredState = null;
+        Type deferredState = null;
+        ServerMessageHandler messageHandler;
         Task<List<ServerInformation>> publicServerListTask = null;
 
         public ClientSettings Settings { get; private set; } = new ClientSettings();
@@ -116,7 +117,7 @@ namespace Infiniminer
         {
             Settings.Volume = Math.Clamp(volume, 0, 1);
             if (propertyBag != null)
-                propertyBag.volumeLevel = Settings.Volume;
+                propertyBag.sounds.Volume = Settings.Volume;
             TitleMusic.SetVolume(Settings.Volume);
         }
 
@@ -183,10 +184,7 @@ namespace Infiniminer
             StatusMessage = "";
 
             // Create our connect message.
-            NetDataWriter connectBuffer = new NetDataWriter();
-            connectBuffer.Put(GameConstants.AppIdentifier);
-            connectBuffer.Put(propertyBag.playerHandle);
-            connectBuffer.Put(INFINIMINER_VERSION);
+            NetDataWriter connectBuffer = ClientMessages.ConnectRequest(propertyBag.playerHandle);
 
             // Connect to the server.
             propertyBag.serverPeer = propertyBag.netClient.Connect(serverEndPoint, connectBuffer);
@@ -249,7 +247,7 @@ namespace Infiniminer
             if (timeSinceLastUpdate > 0.05)
             {
                 timeSinceLastUpdate = 0;
-                if (CurrentStateType == "Infiniminer.States.MainGameState")
+                if (CurrentStateType == typeof(States.MainGameState))
                     propertyBag.SendPlayerUpdate();
             }
 
@@ -259,10 +257,16 @@ namespace Infiniminer
 
             if (deferredState != null)
             {
-                string newState = deferredState;
+                Type newState = deferredState;
                 deferredState = null;
                 ChangeState(newState);
             }
+        }
+
+        // Changes state once the network events being handled are done (see UpdateNetwork).
+        public void ChangeStateAfterNetworkUpdate(Type newState)
+        {
+            deferredState = newState;
         }
 
         void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
@@ -289,7 +293,7 @@ namespace Infiniminer
             else if (disconnectInfo.Reason != DisconnectReason.DisconnectPeerCalled)
                 StatusMessage = reason != "" ? "DISCONNECTED: " + Sanitize(reason).ToUpperInvariant() : "DISCONNECTED FROM THE SERVER.";
 
-            deferredState = "Infiniminer.States.ServerBrowserState";
+            deferredState = typeof(States.ServerBrowserState);
         }
 
         void OnNetworkReceiveUnconnected(IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType)
@@ -306,330 +310,11 @@ namespace Infiniminer
         {
             try
             {
-                HandleData(msgBuffer);
+                messageHandler.Handle(msgBuffer, currentGameTime);
             }
             catch (Exception e)
             {
                 Console.Error.WriteLine("Ignoring malformed packet: " + e.Message);
-            }
-        }
-
-        void HandleData(NetDataReader msgBuffer)
-        {
-            GameTime gameTime = currentGameTime;
-            InfiniminerMessage dataType = (InfiniminerMessage)msgBuffer.GetByte();
-            switch (dataType)
-            {
-                case InfiniminerMessage.WorldInfo:
-                    {
-                        int size = msgBuffer.GetUShort();
-                        if (!GameConstants.MapSizes.Contains(size))
-                            throw new InvalidDataException("unsupported map size " + size);
-                        // A fresh world: on joining, or when the server loads a different map.
-                        propertyBag.blockEngine.Dispose();
-                        propertyBag.blockEngine = new BlockEngine(this, size);
-                        propertyBag.mapSize = size;
-                        propertyBag.mapLoadProgress = new bool[size, size];
-                        propertyBag.downloadComplete = false;
-                        propertyBag.beaconList.Clear();
-                    }
-                    break;
-
-                case InfiniminerMessage.BlockBulkTransfer:
-                    {
-                        int size = propertyBag.mapSize;
-                        byte x = msgBuffer.GetByte();
-                        byte y = msgBuffer.GetByte();
-                        byte[] rows = MapChunk.Decompress(msgBuffer.GetRemainingBytes(), 16 * size);
-                        propertyBag.mapLoadProgress[x, y] = true;
-                        for (int dy = 0; dy < 16; dy++)
-                            for (int z = 0; z < size; z++)
-                            {
-                                BlockType blockType = (BlockType)rows[dy * size + z];
-                                if (blockType != BlockType.None && blockType < BlockType.MAXIMUM)
-                                    propertyBag.blockEngine.downloadList[x, y + dy, z] = blockType;
-                            }
-                        bool downloadComplete = true;
-                        for (int cx = 0; cx < size && downloadComplete; cx++)
-                            for (int cy = 0; cy < size; cy += 16)
-                                if (propertyBag.mapLoadProgress[cx, cy] == false)
-                                {
-                                    downloadComplete = false;
-                                    break;
-                                }
-                        if (downloadComplete && !propertyBag.downloadComplete)
-                        {
-                            propertyBag.downloadComplete = true;
-                            if (CurrentStateType == "Infiniminer.States.LoadingState")
-                                deferredState = "Infiniminer.States.TeamSelectionState";
-                            TitleMusic.Stop();
-                            propertyBag.blockEngine.DownloadComplete();
-                        }
-                    }
-                    break;
-
-                case InfiniminerMessage.SetBeacon:
-                    {
-                        Vector3 position = msgBuffer.GetXnaVector3();
-                        string text = msgBuffer.GetString();
-                        PlayerTeam team = (PlayerTeam)msgBuffer.GetByte();
-
-                        if (text == "")
-                        {
-                            if (propertyBag.beaconList.ContainsKey(position))
-                                propertyBag.beaconList.Remove(position);
-                        }
-                        else
-                        {
-                            Beacon newBeacon = new Beacon();
-                            newBeacon.ID = text;
-                            newBeacon.Team = team;
-                            propertyBag.beaconList[position] = newBeacon;
-                        }
-                    }
-                    break;
-
-                case InfiniminerMessage.TriggerConstructionGunAnimation:
-                    {
-                        propertyBag.constructionGunAnimation = msgBuffer.GetFloat();
-                        if (propertyBag.constructionGunAnimation <= -0.1)
-                        {
-                            propertyBag.PlaySound(InfiniminerSound.RadarSwitch);
-                            propertyBag.blockPredictor.OnBuildFailed();
-                        }
-                    }
-                    break;
-
-                case InfiniminerMessage.ResourceUpdate:
-                    {
-                        // ore, cash, weight, max ore, max weight, team ore, red cash, blue cash, all uint
-                        propertyBag.playerOre = msgBuffer.GetUInt();
-                        propertyBag.playerCash = msgBuffer.GetUInt();
-                        propertyBag.playerWeight = msgBuffer.GetUInt();
-                        propertyBag.playerOreMax = msgBuffer.GetUInt();
-                        propertyBag.playerWeightMax = msgBuffer.GetUInt();
-                        propertyBag.teamOre = msgBuffer.GetUInt();
-                        propertyBag.teamRedCash = msgBuffer.GetUInt();
-                        propertyBag.teamBlueCash = msgBuffer.GetUInt();
-                    }
-                    break;
-
-                case InfiniminerMessage.BlockSet:
-                    {
-                        // x, y, z, type, all bytes
-                        byte x = msgBuffer.GetByte();
-                        byte y = msgBuffer.GetByte();
-                        byte z = msgBuffer.GetByte();
-                        BlockType blockType = (BlockType)msgBuffer.GetByte();
-                        if (blockType >= BlockType.MAXIMUM)
-                            break;
-                        propertyBag.blockPredictor.OnServerBlockSet(x, y, z);
-                        if (blockType == BlockType.None)
-                        {
-                            if (propertyBag.blockEngine.BlockAtPoint(new Vector3(x, y, z)) != BlockType.None)
-                                propertyBag.blockEngine.RemoveBlock(x, y, z);
-                        }
-                        else
-                        {
-                            if (propertyBag.blockEngine.BlockAtPoint(new Vector3(x, y, z)) != BlockType.None)
-                                propertyBag.blockEngine.RemoveBlock(x, y, z);
-                            propertyBag.blockEngine.AddBlock(x, y, z, blockType);
-                            CheckForStandingInLava();
-                        }
-                    }
-                    break;
-
-                case InfiniminerMessage.TriggerExplosion:
-                    {
-                        Vector3 blockPos = msgBuffer.GetXnaVector3();
-
-                        // Play the explosion sound.
-                        propertyBag.PlaySound(InfiniminerSound.Explosion, blockPos);
-
-                        // Create some particles.
-                        propertyBag.particleEngine.CreateExplosionDebris(blockPos);
-
-                        // Figure out what the effect is.
-                        float distFromExplosive = (blockPos + 0.5f * Vector3.One - propertyBag.playerPosition).Length();
-                        if (distFromExplosive < 3)
-                            propertyBag.KillPlayer("WAS KILLED IN AN EXPLOSION!");
-                        else if (distFromExplosive < 8)
-                        {
-                            // If we're not in explosion mode, turn it on with the minimum ammount of shakiness.
-                            if (propertyBag.screenEffect != ScreenEffect.Explosion)
-                            {
-                                propertyBag.screenEffect = ScreenEffect.Explosion;
-                                propertyBag.screenEffectCounter = 2;
-                            }
-                            // If this bomb would result in a bigger shake, use its value.
-                            propertyBag.screenEffectCounter = Math.Min(propertyBag.screenEffectCounter, (distFromExplosive - 2) / 5);
-                        }
-                    }
-                    break;
-
-                case InfiniminerMessage.PlayerSetTeam:
-                    {
-                        uint playerId = msgBuffer.GetUInt();
-                        if (propertyBag.playerList.ContainsKey(playerId))
-                        {
-                            Player player = propertyBag.playerList[playerId];
-                            player.Team = (PlayerTeam)msgBuffer.GetByte();
-
-                            // The server can put us on the other team (auto-balance).
-                            if (playerId == propertyBag.playerMyId && player.Team != PlayerTeam.None && player.Team != propertyBag.playerTeam)
-                            {
-                                propertyBag.playerTeam = player.Team;
-                                propertyBag.playerBlocks = GameRules.GetBlocks(propertyBag.playerClass, player.Team);
-                                propertyBag.playerBlockSelected = 0;
-                            }
-                        }
-                    }
-                    break;
-
-                case InfiniminerMessage.PlayerJoined:
-                    {
-                        uint playerId = msgBuffer.GetUInt();
-                        string playerName = msgBuffer.GetString();
-                        bool thisIsMe = msgBuffer.GetBool();
-                        bool playerAlive = msgBuffer.GetBool();
-                        propertyBag.playerList[playerId] = new Player(this);
-                        propertyBag.playerList[playerId].Handle = Sanitize(playerName);
-                        propertyBag.playerList[playerId].ID = playerId;
-                        propertyBag.playerList[playerId].Alive = playerAlive;
-                        if (thisIsMe)
-                            propertyBag.playerMyId = playerId;
-                    }
-                    break;
-
-                case InfiniminerMessage.PlayerLeft:
-                    {
-                        uint playerId = msgBuffer.GetUInt();
-                        if (propertyBag.playerList.ContainsKey(playerId))
-                            propertyBag.playerList.Remove(playerId);
-                    }
-                    break;
-
-                case InfiniminerMessage.PlayerDead:
-                    {
-                        uint playerId = msgBuffer.GetUInt();
-                        if (propertyBag.playerList.ContainsKey(playerId))
-                        {
-                            Player player = propertyBag.playerList[playerId];
-                            player.Alive = false;
-                            if (playerId == propertyBag.playerMyId)
-                                propertyBag.EnterDeathState();
-                            propertyBag.particleEngine.CreateBloodSplatter(player.Position, player.Team == PlayerTeam.Red ? Color.Red : Color.Blue);
-                            if (playerId != propertyBag.playerMyId)
-                                propertyBag.PlaySound(InfiniminerSound.Death, player.Position);
-                        }
-                    }
-                    break;
-
-                case InfiniminerMessage.PlayerAlive:
-                    {
-                        uint playerId = msgBuffer.GetUInt();
-                        if (propertyBag.playerList.ContainsKey(playerId))
-                        {
-                            Player player = propertyBag.playerList[playerId];
-                            player.Alive = true;
-                            if (playerId == propertyBag.playerMyId)
-                                propertyBag.OnRespawned();
-                        }
-                    }
-                    break;
-
-                case InfiniminerMessage.PlayerUpdate:
-                    {
-                        uint playerId = msgBuffer.GetUInt();
-                        if (propertyBag.playerList.ContainsKey(playerId))
-                        {
-                            Player player = propertyBag.playerList[playerId];
-                            player.UpdatePosition(msgBuffer.GetXnaVector3(), gameTime.TotalGameTime.TotalSeconds);
-                            player.Heading = msgBuffer.GetXnaVector3();
-                            player.Tool = (PlayerTools)msgBuffer.GetByte();
-                            player.UsingTool = msgBuffer.GetBool();
-                            player.Score = (uint)(msgBuffer.GetUShort() * 100);
-                        }
-                    }
-                    break;
-
-                case InfiniminerMessage.MatchInfo:
-                    {
-                        int secondsLeft = msgBuffer.GetInt();
-                        propertyBag.winningCash = msgBuffer.GetUInt();
-                        propertyBag.overtime = secondsLeft == 0;
-                        propertyBag.matchEndTime = secondsLeft < 0 ? double.NaN : gameTime.TotalGameTime.TotalSeconds + secondsLeft;
-                    }
-                    break;
-
-                case InfiniminerMessage.GameOver:
-                    {
-                        propertyBag.teamWinners = (PlayerTeam)msgBuffer.GetByte();
-                    }
-                    break;
-
-                case InfiniminerMessage.ChatMessage:
-                    {
-                        ChatMessageType chatType = (ChatMessageType)msgBuffer.GetByte();
-                        string chatString = Sanitize(msgBuffer.GetString());
-                        ChatMessage chatMsg = new ChatMessage(chatString, chatType, 10);
-                        propertyBag.chatBuffer.Insert(0, chatMsg);
-                        propertyBag.PlaySound(InfiniminerSound.ClickLow);
-                    }
-                    break;
-
-                case InfiniminerMessage.PlayerPing:
-                    {
-                        uint playerId = msgBuffer.GetUInt();
-                        if (propertyBag.playerList.ContainsKey(playerId))
-                        {
-                            if (propertyBag.playerList[playerId].Team == propertyBag.playerTeam)
-                            {
-                                propertyBag.playerList[playerId].Ping = 1;
-                                propertyBag.PlaySound(InfiniminerSound.Ping);
-                            }
-                        }
-                    }
-                    break;
-
-                case InfiniminerMessage.PlayerSetPosition:
-                    {
-                        Vector3 position = msgBuffer.GetXnaVector3();
-                        byte epoch = msgBuffer.GetByte();
-                        PositionReason reason = (PositionReason)msgBuffer.GetByte();
-                        propertyBag.SetPositionFromServer(position, epoch, reason);
-                    }
-                    break;
-
-                case InfiniminerMessage.PlaySound:
-                    {
-                        InfiniminerSound sound = (InfiniminerSound)msgBuffer.GetByte();
-                        bool hasPosition = msgBuffer.GetBool();
-                        if (hasPosition)
-                        {
-                            Vector3 soundPosition = msgBuffer.GetXnaVector3();
-                            propertyBag.PlaySound(sound, soundPosition);
-                        }
-                        else
-                            propertyBag.PlaySound(sound);
-                    }
-                    break;
-            }
-        }
-
-        private void CheckForStandingInLava()
-        {
-            // Copied from TryToMoveTo; responsible for checking if lava has flowed over us.
-
-            Vector3 movePosition = propertyBag.playerPosition;
-            Vector3 midBodyPoint = movePosition + new Vector3(0, -0.7f, 0);
-            Vector3 lowerBodyPoint = movePosition + new Vector3(0, -1.4f, 0);
-            BlockType lowerBlock = propertyBag.blockEngine.BlockAtPoint(lowerBodyPoint);
-            BlockType midBlock = propertyBag.blockEngine.BlockAtPoint(midBodyPoint);
-            BlockType upperBlock = propertyBag.blockEngine.BlockAtPoint(movePosition);
-            if (upperBlock == BlockType.Lava || lowerBlock == BlockType.Lava || midBlock == BlockType.Lava)
-            {
-                propertyBag.KillPlayer("WAS INCINERATED BY LAVA!");
             }
         }
 
@@ -674,8 +359,9 @@ namespace Infiniminer
             }
 
             propertyBag = new Infiniminer.PropertyBag(this);
+            messageHandler ??= new ServerMessageHandler(this);
             propertyBag.playerHandle = Settings.Handle;
-            propertyBag.volumeLevel = Settings.Volume;
+            propertyBag.sounds.Volume = Settings.Volume;
             propertyBag.netListener.PeerDisconnectedEvent += OnPeerDisconnected;
             propertyBag.netListener.NetworkReceiveEvent += OnNetworkReceive;
             propertyBag.netListener.NetworkReceiveUnconnectedEvent += OnNetworkReceiveUnconnected;
@@ -693,11 +379,11 @@ namespace Infiniminer
             ResetPropertyBag();
 
             // Set the initial state to team selection
-            ChangeState("Infiniminer.States.TitleState");
+            ChangeState(typeof(States.TitleState));
 
             // Play the title music.
             if (!NoSound)
-                TitleMusic.Start(Assets.MusicPath("song_title"), propertyBag.volumeLevel);
+                TitleMusic.Start(Assets.MusicPath("song_title"), propertyBag.sounds.Volume);
         }
     }
 }

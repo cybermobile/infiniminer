@@ -1,4 +1,3 @@
-using System.Reflection;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -11,10 +10,10 @@ namespace StateMasher
         public Infiniminer.PropertyBag propertyBag = null;
         public SpriteBatch SpriteBatch;
 
-        private string currentStateType = "";
-        public string CurrentStateType
+        // The type of the current state (null before the first one).
+        public Type CurrentStateType
         {
-            get { return currentStateType; }
+            get { return currentState?.GetType(); }
         }
 
         private State currentState = null;
@@ -41,22 +40,19 @@ namespace StateMasher
             };
         }
 
-        protected void ChangeState(string newState)
+        protected void ChangeState(Type newState)
         {
-            // Call OnLeave for the old state.
+            if (!typeof(State).IsAssignableFrom(newState))
+                throw new ArgumentException(newState + " is not a State", nameof(newState));
+
+            Type oldState = CurrentStateType;
             if (currentState != null)
                 currentState.OnLeave(newState);
 
-            // Instantiate and set the new state.
-            Assembly a = Assembly.GetExecutingAssembly();
-            Type t = a.GetType(newState);
-            currentState = Activator.CreateInstance(t) as State;
-
-            // Set up the new state.
+            currentState = (State)Activator.CreateInstance(newState);
             currentState._P = propertyBag;
             currentState._SM = this;
-            currentState.OnEnter(currentStateType);
-            currentStateType = newState;
+            currentState.OnEnter(oldState);
             needToRenderOnEnter = true;
         }
 
@@ -75,7 +71,7 @@ namespace StateMasher
             if (currentState != null && propertyBag != null)
             {
                 // Call OnUpdate.
-                string newState = currentState.OnUpdate(gameTime, Keyboard.GetState(), Mouse.GetState());
+                Type newState = currentState.OnUpdate(gameTime, Keyboard.GetState(), Mouse.GetState());
                 if (newState != null)
                     ChangeState(newState);
 

@@ -59,5 +59,9 @@ The original server trusted almost everything the client said.
 - [ ] Later: notarised macOS builds and a signed Windows installer (need paid certificates), Flatpak
 
 ## 8. Code health
-- [ ] Break up `PropertyBag`, type-safe game states
-- [ ] Client tests
+- [x] Type-safe game states (`typeof(MainGameState)` instead of strings resolved by reflection)
+- [x] Break up `PropertyBag` and `InfiniminerGame`: client→server encoding (`ClientMessages`, shared with the
+      tests' bot), server message handling (`ServerMessageHandler`), `ChatLog`, `Radar`, `SoundPlayer`, and dig
+      rules shared by the server and the client's prediction (`GameRules.Dig`)
+- [x] Client tests: radar, chat, sound panning, dig rules, wire format, state construction
+- [ ] Later: move the local player's fields out of `PropertyBag` into their own class

@@ -90,5 +90,44 @@ namespace Infiniminer
                 || (team == PlayerTeam.Red && blockType == BlockType.TransRed)
                 || (team == PlayerTeam.Blue && blockType == BlockType.TransBlue);
         }
+
+        // What digging a block with the pickaxe (or the drill) gives. Gold and diamonds add weight and are
+        // left in place when the digger can't carry any more.
+        public static DigResult Dig(BlockType blockType, bool drill)
+        {
+            DigResult result;
+            switch (blockType)
+            {
+                case BlockType.Dirt:
+                case BlockType.DirtSign:
+                    result = new DigResult(true, 0, 0, 0, InfiniminerSound.DigDirt);
+                    break;
+                case BlockType.Ore:
+                    result = new DigResult(true, 20, 0, 0, InfiniminerSound.DigMetal);
+                    break;
+                case BlockType.Gold:
+                    result = new DigResult(true, 0, 100, 1, InfiniminerSound.DigMetal);
+                    break;
+                case BlockType.Diamond:
+                    result = new DigResult(true, 0, 1000, 1, InfiniminerSound.DigMetal);
+                    break;
+                case BlockType.Rock:
+                    result = new DigResult(drill, 0, 0, 0, InfiniminerSound.DigDirt);
+                    break;
+                default:
+                    result = new DigResult(false, 0, 0, 0, InfiniminerSound.DigDirt);
+                    break;
+            }
+            return drill ? result with { Sound = InfiniminerSound.Drill } : result;
+        }
+
+        // Whether a dig removes the block for a player carrying `weight` of at most `maxWeight`.
+        public static bool DigRemovesBlock(BlockType blockType, bool drill, uint weight, uint maxWeight)
+        {
+            DigResult result = Dig(blockType, drill);
+            return result.Removes && (result.Weight == 0 || weight < maxWeight);
+        }
     }
+
+    public readonly record struct DigResult(bool Removes, uint Ore, uint Cash, uint Weight, InfiniminerSound Sound);
 }

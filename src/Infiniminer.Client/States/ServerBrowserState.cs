@@ -12,7 +12,7 @@ namespace Infiniminer.States
     {
         Texture2D texMenu;
         Rectangle drawRect;
-        string nextState = null;
+        Type nextState = null;
         List<ServerInformation> serverList = new List<ServerInformation>();
         List<int> descWidths = new List<int>();
         SpriteFontBase uiFont;
@@ -25,7 +25,7 @@ namespace Infiniminer.States
             new ClickRegion(new Rectangle(440,713,300,42), "options")
         };
 
-        public override void OnEnter(string oldState)
+        public override void OnEnter(Type oldState)
         {
             _SM.IsMouseVisible = true;
             Game.ResetPropertyBag();
@@ -41,12 +41,12 @@ namespace Infiniminer.States
             Game.StartServerDiscovery();
         }
 
-        public override void OnLeave(string newState)
+        public override void OnLeave(Type newState)
         {
 
         }
 
-        public override string OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
+        public override Type OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
         {
             // Pick up replies to our LAN discovery broadcast.
             Game.UpdateNetwork(gameTime);
@@ -163,7 +163,7 @@ namespace Infiniminer.States
                     if (connectEndPoint != null)
                     {
                         Game.JoinGame(connectEndPoint);
-                        nextState = "Infiniminer.States.LoadingState";
+                        nextState = typeof(LoadingState);
                     }
                     else
                         Game.StatusMessage = "ERROR: COULD NOT FIND " + TextUtil.Sanitize(directConnectIP).ToUpperInvariant();
@@ -187,7 +187,7 @@ namespace Infiniminer.States
             {
                 if (key == Keys.Escape)
                 {
-                    nextState = "Infiniminer.States.TitleState";
+                    nextState = typeof(TitleState);
                 }
             }
         }
@@ -211,7 +211,7 @@ namespace Infiniminer.States
                     if (distanceFromCenter < descWidths[serverIndex] / 2)
                     {
                         Game.JoinGame(serverList[serverIndex].ipEndPoint);
-                        nextState = "Infiniminer.States.LoadingState";
+                        nextState = typeof(LoadingState);
                         _P.PlaySound(InfiniminerSound.ClickHigh);
                     }
                 }
@@ -228,7 +228,7 @@ namespace Infiniminer.States
 
                     case "options":
                         _P.PlaySound(InfiniminerSound.ClickHigh);
-                        nextState = "Infiniminer.States.SettingsState";
+                        nextState = typeof(SettingsState);
                         break;
 
                     case "direct":

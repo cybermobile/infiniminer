@@ -19,8 +19,8 @@ namespace Infiniminer.States
             public Action Activate;     // Enter or click
         }
 
-        string nextState = null;
-        string returnState;
+        Type nextState = null;
+        Type returnState;
         Page page = Page.Options;
         int selected = 0;
         bool editingName = false;
@@ -46,13 +46,13 @@ namespace Infiniminer.States
 
         bool InGame
         {
-            get { return returnState == "Infiniminer.States.MainGameState"; }
+            get { return returnState == typeof(MainGameState); }
         }
 
-        public override void OnEnter(string oldState)
+        public override void OnEnter(Type oldState)
         {
             _SM.IsMouseVisible = true;
-            returnState = oldState == "" ? "Infiniminer.States.ServerBrowserState" : oldState;
+            returnState = oldState ?? typeof(ServerBrowserState);
             uiFont = Game.Assets.UiFont;
             titleFont = Game.Assets.TitleFont;
             texBlank = new Texture2D(_SM.GraphicsDevice, 1, 1);
@@ -60,7 +60,7 @@ namespace Infiniminer.States
             BuildRows();
         }
 
-        public override void OnLeave(string newState)
+        public override void OnLeave(Type newState)
         {
             texBlank.Dispose();
         }
@@ -236,7 +236,7 @@ namespace Infiniminer.States
             return index;
         }
 
-        public override string OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
+        public override Type OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
         {
             // Stay connected while the menu is open.
             if (InGame)

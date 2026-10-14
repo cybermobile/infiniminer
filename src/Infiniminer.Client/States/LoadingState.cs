@@ -10,7 +10,7 @@ namespace Infiniminer.States
     {
         Texture2D texMenu;
         Rectangle drawRect;
-        string nextState = null;
+        Type nextState = null;
         SpriteFontBase uiFont;
         string[] currentHint;
 
@@ -38,7 +38,7 @@ namespace Infiniminer.States
             "Miners carry a drill that can bore through rock.",
         };
 
-        public override void OnEnter(string oldState)
+        public override void OnEnter(Type oldState)
         {
             _SM.IsMouseVisible = false;
 
@@ -54,12 +54,12 @@ namespace Infiniminer.States
             currentHint = HINTS[randGen.Next(0, HINTS.Length)].Split("\n".ToCharArray());
         }
 
-        public override void OnLeave(string newState)
+        public override void OnLeave(Type newState)
         {
 
         }
 
-        public override string OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
+        public override Type OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
         {
             // Do network stuff.
             Game.UpdateNetwork(gameTime);
@@ -96,7 +96,7 @@ namespace Infiniminer.States
             if (key == Keys.Escape)
             {
                 _P.serverPeer?.Disconnect();
-                nextState = "Infiniminer.States.ServerBrowserState";
+                nextState = typeof(ServerBrowserState);
             }
         }
 

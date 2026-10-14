@@ -103,11 +103,6 @@ namespace Infiniminer
             spriteBatch.DrawString(uiFont, text, pointCenter - textSize / 2, colorText);
         }
 
-        private static bool MessageExpired(ChatMessage msg)
-        {
-            return msg.timestamp <= 0;
-        }
-
         double currentTime = 0;
 
         public void Update(GameTime gameTime)
@@ -116,9 +111,7 @@ namespace Infiniminer
             if (_P == null)
                 return;
 
-            foreach (ChatMessage msg in _P.chatBuffer)
-                msg.timestamp -= (float)gameTime.ElapsedGameTime.TotalSeconds;
-            _P.chatBuffer.RemoveAll(MessageExpired);
+            _P.chatLog.Update((float)gameTime.ElapsedGameTime.TotalSeconds);
 
             if (_P.constructionGunAnimation > 0)
             {
@@ -380,17 +373,17 @@ namespace Infiniminer
                 spriteBatch.DrawString(uiFont, "TEAM> " + _P.chatEntryBuffer, new Vector2(22, ScreenHeight - 98), Color.Black);
                 spriteBatch.DrawString(uiFont, "TEAM> " + _P.chatEntryBuffer, new Vector2(20, ScreenHeight - 100), Color.White);
             }
-            for (int i = 0; i < _P.chatBuffer.Count; i++)
+            for (int i = 0; i < _P.chatLog.Messages.Count; i++)
             {
                 Color chatColor = Color.White;
-                if (_P.chatBuffer[i].type == ChatMessageType.SayRedTeam)
+                if (_P.chatLog.Messages[i].type == ChatMessageType.SayRedTeam)
                     chatColor = InfiniminerGame.IM_RED;
-                if (_P.chatBuffer[i].type == ChatMessageType.SayBlueTeam)
+                if (_P.chatLog.Messages[i].type == ChatMessageType.SayBlueTeam)
                     chatColor = InfiniminerGame.IM_BLUE;
-                string chatText = _P.chatBuffer[i].message;
-                if (InfiniminerGame.ColorBlindMode && _P.chatBuffer[i].type == ChatMessageType.SayRedTeam)
+                string chatText = _P.chatLog.Messages[i].message;
+                if (InfiniminerGame.ColorBlindMode && _P.chatLog.Messages[i].type == ChatMessageType.SayRedTeam)
                     chatText = "[R] " + chatText;
-                else if (InfiniminerGame.ColorBlindMode && _P.chatBuffer[i].type == ChatMessageType.SayBlueTeam)
+                else if (InfiniminerGame.ColorBlindMode && _P.chatLog.Messages[i].type == ChatMessageType.SayBlueTeam)
                     chatText = "[B] " + chatText;
                 spriteBatch.DrawString(uiFont, chatText, new Vector2(22, ScreenHeight - 114 - 16 * i), Color.Black);
                 spriteBatch.DrawString(uiFont, chatText, new Vector2(20, ScreenHeight - 116 - 16 * i), chatColor);

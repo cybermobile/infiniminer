@@ -10,7 +10,7 @@ namespace Infiniminer.States
     {
         Texture2D texMenu;
         Rectangle drawRect;
-        string nextState = null;
+        Type nextState = null;
         SpriteFontBase uiFont;
         bool canCancel = false;
 
@@ -19,7 +19,7 @@ namespace Infiniminer.States
             new ClickRegion(new Rectangle(135,424,761,181), "blue")
         };
 
-        public override void OnEnter(string oldState)
+        public override void OnEnter(Type oldState)
         {
             _SM.IsMouseVisible = true;
 
@@ -30,16 +30,16 @@ namespace Infiniminer.States
 
             uiFont = Game.Assets.UiFont;
 
-            if (oldState == "Infiniminer.States.MainGameState")
+            if (oldState == typeof(MainGameState))
                 canCancel = true;
         }
 
-        public override void OnLeave(string newState)
+        public override void OnLeave(Type newState)
         {
 
         }
 
-        public override string OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
+        public override Type OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
         {
             // Do network stuff.
             Game.UpdateNetwork(gameTime);
@@ -79,7 +79,7 @@ namespace Infiniminer.States
         public override void OnKeyDown(Keys key)
         {
             if (key == Keys.Escape && canCancel)
-                nextState = "Infiniminer.States.MainGameState";
+                nextState = typeof(MainGameState);
         }
 
         public override void OnKeyUp(Keys key)
@@ -98,21 +98,21 @@ namespace Infiniminer.States
             {
                 case "red":
                     if (_P.playerTeam == PlayerTeam.Red && canCancel)
-                        nextState = "Infiniminer.States.MainGameState";
+                        nextState = typeof(MainGameState);
                     else
                     {
                         _P.SetPlayerTeam(PlayerTeam.Red);
-                        nextState = "Infiniminer.States.ClassSelectionState";
+                        nextState = typeof(ClassSelectionState);
                     }
                     _P.PlaySound(InfiniminerSound.ClickHigh);
                     break;
                 case "blue":
                     if (_P.playerTeam == PlayerTeam.Blue && canCancel)
-                        nextState = "Infiniminer.States.MainGameState";
+                        nextState = typeof(MainGameState);
                     else
                     {
                         _P.SetPlayerTeam(PlayerTeam.Blue);
-                        nextState = "Infiniminer.States.ClassSelectionState";
+                        nextState = typeof(ClassSelectionState);
                     }
                     _P.PlaySound(InfiniminerSound.ClickHigh);
                     break;

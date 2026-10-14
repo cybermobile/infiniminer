@@ -1,7 +1,6 @@
 using LiteNetLib;
 using LiteNetLib.Utils;
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Audio;
 
 namespace Infiniminer
 {
@@ -12,20 +11,6 @@ namespace Infiniminer
         Teleport,
         Fall,
         Explosion,
-    }
-
-    public class ChatMessage
-    {
-        public string message;
-        public ChatMessageType type;
-        public float timestamp;
-
-        public ChatMessage(string message, ChatMessageType type, float timestamp)
-        {
-            this.message = message;
-            this.type = type;
-            this.timestamp = timestamp;
-        }
     }
 
     public class PropertyBag
@@ -76,7 +61,6 @@ namespace Infiniminer
         public bool playerRadarMute = false;
         public float playerToolCooldown = 0;
         public string playerHandle = "Player";
-        public float volumeLevel = 1.0f;
         public uint playerMyId = 0;
         public float radarCooldown = 0;
         public float radarDistance = 0;
@@ -98,13 +82,11 @@ namespace Infiniminer
         public ScreenEffect screenEffect = ScreenEffect.None;
         public double screenEffectCounter = 0;
 
-        // Sound stuff.
-        public Dictionary<InfiniminerSound, SoundEffect> soundList = new Dictionary<InfiniminerSound, SoundEffect>();
+        public readonly SoundPlayer sounds = new SoundPlayer();
 
         // Chat stuff.
         public ChatMessageType chatMode = ChatMessageType.None;
-        public int chatMaxBuffer = 5;
-        public List<ChatMessage> chatBuffer = new List<ChatMessage>(); // chatBuffer[0] is most recent
+        public readonly ChatLog chatLog = new ChatLog();
         public string chatEntryBuffer = "";
 
         public PropertyBag(InfiniminerGame gameInstance)
@@ -140,35 +122,8 @@ namespace Infiniminer
             UpdateCamera();
 
             // Load sounds.
-            if (!gameInstance.NoSound)
-            {
-                try
-                {
-                    Assets assets = gameInstance.Assets;
-                    soundList[InfiniminerSound.DigDirt] = assets.Sound("sounds/dig-dirt");
-                    soundList[InfiniminerSound.DigMetal] = assets.Sound("sounds/dig-metal");
-                    soundList[InfiniminerSound.Ping] = assets.Sound("sounds/ping");
-                    soundList[InfiniminerSound.ConstructionGun] = assets.Sound("sounds/build");
-                    soundList[InfiniminerSound.Death] = assets.Sound("sounds/death");
-                    soundList[InfiniminerSound.CashDeposit] = assets.Sound("sounds/cash");
-                    soundList[InfiniminerSound.ClickHigh] = assets.Sound("sounds/click-loud");
-                    soundList[InfiniminerSound.ClickLow] = assets.Sound("sounds/click-quiet");
-                    soundList[InfiniminerSound.GroundHit] = assets.Sound("sounds/hitground");
-                    soundList[InfiniminerSound.Teleporter] = assets.Sound("sounds/teleport");
-                    soundList[InfiniminerSound.Jumpblock] = assets.Sound("sounds/jumpblock");
-                    soundList[InfiniminerSound.Explosion] = assets.Sound("sounds/explosion");
-                    soundList[InfiniminerSound.RadarHigh] = assets.Sound("sounds/radar-high");
-                    soundList[InfiniminerSound.RadarLow] = assets.Sound("sounds/radar-low");
-                    soundList[InfiniminerSound.RadarSwitch] = assets.Sound("sounds/switch");
-                    soundList[InfiniminerSound.Drill] = assets.Sound("sounds/drill");
-                }
-                catch (Exception)
-                {
-                    // No usable audio device: play on without sound rather than crashing.
-                    soundList.Clear();
-                    gameInstance.NoSound = true;
-                }
-            }
+            if (!gameInstance.NoSound && !sounds.Load(gameInstance.Assets))
+                gameInstance.NoSound = true;
         }
 
         public bool IsConnected
@@ -176,10 +131,10 @@ namespace Infiniminer
             get { return serverPeer != null && serverPeer.ConnectionState == ConnectionState.Connected; }
         }
 
-        void Send(NetDataWriter msgBuffer, NetChannel channel)
+        public void Send(OutgoingMessage message)
         {
             if (IsConnected)
-                serverPeer.Send(msgBuffer, channel);
+                serverPeer.Send(message.Data, message.Channel);
         }
 
         public void KillPlayer(string deathMessage)
@@ -189,9 +144,7 @@ namespace Infiniminer
 
             EnterDeathState();
 
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerDead);
-            msgBuffer.Put(deathMessage);
-            Send(msgBuffer, NetChannel.ReliableInOrder2);
+            Send(ClientMessages.Died(deathMessage));
         }
 
         // Shows the death screen. Called for deaths we notice ourselves and for deaths the server decides.
@@ -219,8 +172,7 @@ namespace Infiniminer
             screenEffect = ScreenEffect.None;
             screenEffectCounter = 0;
 
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerAlive);
-            Send(msgBuffer, NetChannel.ReliableInOrder2);
+            Send(ClientMessages.Respawn());
         }
 
         // The server has put us somewhere: a respawn, or a correction of a move it didn't accept.
@@ -249,24 +201,12 @@ namespace Infiniminer
 
         public void PlaySound(InfiniminerSound sound)
         {
-            if (soundList.TryGetValue(sound, out SoundEffect effect))
-                effect.Play(Math.Clamp(volumeLevel, 0, 1), 0, 0);
+            sounds.Play(sound);
         }
 
         public void PlaySound(InfiniminerSound sound, Vector3 position)
         {
-            if (!soundList.TryGetValue(sound, out SoundEffect effect))
-                return;
-
-            Vector3 offset = position - playerPosition;
-            float distance = offset.Length();
-            float volume = Math.Max(0, 10 - distance) / 10.0f * volumeLevel;
-
-            // Pan towards the side the sound came from (but not hard left/right, and less so up close).
-            float pan = 0;
-            if (distance > 0.5f)
-                pan = Vector3.Dot(offset / distance, playerCamera.GetRightVector()) * 0.8f * Math.Min(1, distance / 2);
-            effect.Play(Math.Clamp(volume, 0, 1), 0, Math.Clamp(pan, -1, 1));
+            sounds.Play(sound, position - playerPosition, playerCamera.GetRightVector());
         }
 
         public void PlaySoundForEveryone(InfiniminerSound sound, Vector3 position)
@@ -275,22 +215,8 @@ namespace Infiniminer
                 return;
 
             // The PlaySound message can be used to instruct the server to have all clients play a directional sound.
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlaySound);
-            msgBuffer.Put((byte)sound);
-            msgBuffer.Put(position);
-            Send(msgBuffer, NetChannel.ReliableUnordered);
+            Send(ClientMessages.PlaySound(sound, position.ToNumerics()));
         }
-
-        //public void Teleport()
-        //{
-        //    float x = (float)randGen.NextDouble() * 74 - 5;
-        //    float z = (float)randGen.NextDouble() * 74 - 5;
-        //    //playerPosition = playerHomeBlock + new Vector3(0.5f, 3, 0.5f);
-        //    playerPosition = new Vector3(x, 74, z);
-        //    screenEffect = ScreenEffect.Teleport;
-        //    screenEffectCounter = 0;
-        //    UpdateCamera();
-        //}
 
         // Version used during updates.
         public void UpdateCamera(GameTime gameTime)
@@ -342,8 +268,7 @@ namespace Infiniminer
             if (!IsConnected)
                 return;
 
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.DepositCash);
-            Send(msgBuffer, NetChannel.ReliableInOrder2);
+            Send(ClientMessages.DepositCash());
         }
 
         public void DepositOre()
@@ -351,8 +276,7 @@ namespace Infiniminer
             if (!IsConnected)
                 return;
 
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.DepositOre);
-            Send(msgBuffer, NetChannel.ReliableInOrder2);
+            Send(ClientMessages.DepositOre());
         }
 
         public void WithdrawOre()
@@ -360,8 +284,7 @@ namespace Infiniminer
             if (!IsConnected)
                 return;
 
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.WithdrawOre);
-            Send(msgBuffer, NetChannel.ReliableInOrder2);
+            Send(ClientMessages.WithdrawOre());
         }
 
         public void SetPlayerTeam(PlayerTeam playerTeam)
@@ -371,9 +294,7 @@ namespace Infiniminer
 
             this.playerTeam = playerTeam;
 
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerSetTeam);
-            msgBuffer.Put((byte)playerTeam);
-            Send(msgBuffer, NetChannel.ReliableInOrder2);
+            Send(ClientMessages.SetTeam(playerTeam));
         }
 
         public void SetPlayerClass(PlayerClass playerClass)
@@ -383,9 +304,7 @@ namespace Infiniminer
 
             this.playerClass = playerClass;
 
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.SelectClass);
-            msgBuffer.Put((byte)playerClass);
-            Send(msgBuffer, NetChannel.ReliableInOrder2);
+            Send(ClientMessages.SelectClass(playerClass));
 
             playerToolSelected = 0;
             playerBlockSelected = 0;
@@ -401,12 +320,7 @@ namespace Infiniminer
 
             playerToolCooldown = GetToolCooldown(PlayerTools.ProspectingRadar);
 
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.UseTool);
-            msgBuffer.Put(playerPosition);
-            msgBuffer.Put(playerCamera.GetLookVector());
-            msgBuffer.Put((byte)PlayerTools.ProspectingRadar);
-            msgBuffer.Put((byte)BlockType.None);
-            Send(msgBuffer, NetChannel.ReliableUnordered);
+            UseTool(PlayerTools.ProspectingRadar);
         }
 
         // Changes a block on our side only (used for predictions).
@@ -434,10 +348,7 @@ namespace Infiniminer
             Vector3 hitPoint = Vector3.Zero, buildPoint = Vector3.Zero;
             if (!blockEngine.RayCollision(playerPosition, playerCamera.GetLookVector(), 2, 10, ref hitPoint, ref buildPoint))
                 return;
-            BlockType hit = blockEngine.BlockAtPoint(hitPoint);
-            bool removed = hit == BlockType.Dirt || hit == BlockType.DirtSign || hit == BlockType.Ore
-                || ((hit == BlockType.Gold || hit == BlockType.Diamond) && playerWeight < playerWeightMax)
-                || (drill && hit == BlockType.Rock);
+            bool removed = GameRules.DigRemovesBlock(blockEngine.BlockAtPoint(hitPoint), drill, playerWeight, playerWeightMax);
             var block = BlockOf(hitPoint);
             if (removed && InsideMap(block))
                 blockPredictor.Predict(block.x, block.y, block.z, BlockType.None, currentTime);
@@ -465,6 +376,11 @@ namespace Infiniminer
             blockPredictor.Predict(block.x, block.y, block.z, blockType, currentTime);
         }
 
+        void UseTool(PlayerTools tool, BlockType blockType = BlockType.None)
+        {
+            Send(ClientMessages.UseTool(playerPosition.ToNumerics(), playerCamera.GetLookVector().ToNumerics(), tool, blockType));
+        }
+
         public void FireDrill()
         {
             if (!IsConnected)
@@ -472,12 +388,7 @@ namespace Infiniminer
 
             playerToolCooldown = GetToolCooldown(PlayerTools.Drill);
 
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.UseTool);
-            msgBuffer.Put(playerPosition);
-            msgBuffer.Put(playerCamera.GetLookVector());
-            msgBuffer.Put((byte)PlayerTools.Drill);
-            msgBuffer.Put((byte)BlockType.None);
-            Send(msgBuffer, NetChannel.ReliableUnordered);
+            UseTool(PlayerTools.Drill);
             PredictDig(true);
         }
 
@@ -488,12 +399,7 @@ namespace Infiniminer
 
             playerToolCooldown = GetToolCooldown(PlayerTools.Pickaxe);
 
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.UseTool);
-            msgBuffer.Put(playerPosition);
-            msgBuffer.Put(playerCamera.GetLookVector());
-            msgBuffer.Put((byte)PlayerTools.Pickaxe);
-            msgBuffer.Put((byte)BlockType.None);
-            Send(msgBuffer, NetChannel.ReliableUnordered);
+            UseTool(PlayerTools.Pickaxe);
             PredictDig(false);
         }
 
@@ -505,13 +411,7 @@ namespace Infiniminer
             playerToolCooldown = GetToolCooldown(PlayerTools.ConstructionGun);
             constructionGunAnimation = -5;
 
-            // Send the message.
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.UseTool);
-            msgBuffer.Put(playerPosition);
-            msgBuffer.Put(playerCamera.GetLookVector());
-            msgBuffer.Put((byte)PlayerTools.ConstructionGun);
-            msgBuffer.Put((byte)blockType);
-            Send(msgBuffer, NetChannel.ReliableUnordered);
+            UseTool(PlayerTools.ConstructionGun, blockType);
             PredictBuild(blockType);
         }
 
@@ -523,13 +423,7 @@ namespace Infiniminer
             playerToolCooldown = GetToolCooldown(PlayerTools.DeconstructionGun);
             constructionGunAnimation = -5;
 
-            // Send the message.
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.UseTool);
-            msgBuffer.Put(playerPosition);
-            msgBuffer.Put(playerCamera.GetLookVector());
-            msgBuffer.Put((byte)PlayerTools.DeconstructionGun);
-            msgBuffer.Put((byte)BlockType.None);
-            Send(msgBuffer, NetChannel.ReliableUnordered);
+            UseTool(PlayerTools.DeconstructionGun);
         }
 
         public void FireDetonator()
@@ -539,13 +433,7 @@ namespace Infiniminer
 
             playerToolCooldown = GetToolCooldown(PlayerTools.Detonator);
 
-            // Send the message.
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.UseTool);
-            msgBuffer.Put(playerPosition);
-            msgBuffer.Put(playerCamera.GetLookVector());
-            msgBuffer.Put((byte)PlayerTools.Detonator);
-            msgBuffer.Put((byte)BlockType.None);
-            Send(msgBuffer, NetChannel.ReliableUnordered); 
+            UseTool(PlayerTools.Detonator);
         }
 
         public void ToggleRadar()
@@ -556,32 +444,7 @@ namespace Infiniminer
 
         public void ReadRadar(ref float distanceReading, ref float valueReading)
         {
-            valueReading = 0;
-            distanceReading = 30;
-
-            // Scan out along the camera axis for 30 meters.
-            for (int i=-3;i<=3; i++)
-                for (int j = -3; j <= 3; j++)
-                {
-                    Matrix rotation = Matrix.CreateRotationX((float)(i * Math.PI / 128)) * Matrix.CreateRotationY((float)(j * Math.PI / 128));
-                    Vector3 scanPoint = playerPosition;
-                    Vector3 lookVector = Vector3.Transform(playerCamera.GetLookVector(), rotation);
-                    for (int k = 0; k < 60; k++)
-                    {
-                        BlockType blockType = blockEngine.BlockAtPoint(scanPoint);
-                        if (blockType == BlockType.Gold)
-                        {
-                            distanceReading = Math.Min(distanceReading, 0.5f * k);
-                            valueReading = Math.Max(valueReading, 200);
-                        }
-                        else if (blockType == BlockType.Diamond)
-                        {
-                            distanceReading = Math.Min(distanceReading, 0.5f * k);
-                            valueReading = Math.Max(valueReading, 1000);
-                        }
-                        scanPoint += 0.5f * lookVector;
-                    }
-                }
+            (distanceReading, valueReading) = Radar.Scan(blockEngine.BlockAtPoint, playerPosition, playerCamera.GetLookVector());
         }
 
         // Returns true if the player is able to use a bank right now.
@@ -612,13 +475,8 @@ namespace Infiniminer
             if (!IsConnected)
                 return;
 
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerUpdate);
-            msgBuffer.Put(playerPosition);
-            msgBuffer.Put(playerCamera.GetLookVector());
-            msgBuffer.Put((byte)playerTools[playerToolSelected]);
-            msgBuffer.Put(playerToolCooldown > 0.001f);
-            msgBuffer.Put(positionEpoch);
-            Send(msgBuffer, NetChannel.UnreliableInOrder1);
+            Send(ClientMessages.PlayerUpdate(playerPosition.ToNumerics(), playerCamera.GetLookVector().ToNumerics(),
+                playerTools[playerToolSelected], playerToolCooldown > 0.001f, positionEpoch));
         }
     }
 }

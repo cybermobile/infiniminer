@@ -15,21 +15,21 @@ namespace Infiniminer.States
         const float CLIMBVELOCITY = GameRules.ClimbVelocity;
         const float DIEVELOCITY = GameRules.DieVelocity;
 
-        string nextState = null;
+        Type nextState = null;
         bool mouseInitialized = false;
 
-        public override void OnEnter(string oldState)
+        public override void OnEnter(Type oldState)
         {
             _SM.IsMouseVisible = false;
         }
 
-        public override void OnLeave(string newState)
+        public override void OnLeave(Type newState)
         {
             _P.chatEntryBuffer = "";
             _P.chatMode = ChatMessageType.None;
         }
 
-        public override string OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
+        public override Type OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
         {
             // Update network stuff.
             Game.UpdateNetwork(gameTime);
@@ -303,14 +303,14 @@ namespace Infiniminer.States
             if (key == Keys.Y && Keyboard.GetState().IsKeyDown(Keys.Escape))
             {
                 _P.serverPeer?.Disconnect();
-                nextState = "Infiniminer.States.ServerBrowserState";
+                nextState = typeof(ServerBrowserState);
                 return;
             }
 
             // Options!
             if (key == Keys.O && Keyboard.GetState().IsKeyDown(Keys.Escape))
             {
-                nextState = "Infiniminer.States.SettingsState";
+                nextState = typeof(SettingsState);
                 return;
             }
 
@@ -328,10 +328,7 @@ namespace Infiniminer.States
                     // If we have an actual message to send, fire it off at the server.
                     if (_P.chatEntryBuffer.Length > 0)
                     {
-                        NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
-                        msgBuffer.Put((byte)_P.chatMode);
-                        msgBuffer.Put(_P.chatEntryBuffer);
-                        _P.serverPeer.Send(msgBuffer, NetChannel.ReliableInOrder3);
+                        _P.Send(ClientMessages.Chat(_P.chatMode, _P.chatEntryBuffer));
                     }
                     
                     _P.chatEntryBuffer = "";
@@ -407,18 +404,16 @@ namespace Infiniminer.States
                 // Radar pings.
                 if (key == Game.Settings.Key(GameAction.Ping))
                 {
-                    NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerPing);
-                    msgBuffer.Put(_P.playerMyId);
-                    _P.serverPeer.Send(msgBuffer, NetChannel.ReliableUnordered);
+                    _P.Send(ClientMessages.Ping(_P.playerMyId));
                 }
 
                 // Change class.
                 if (key == Game.Settings.Key(GameAction.ChangeClass) && _P.playerPosition.Y > _P.SurfaceHeight)
-                    nextState = "Infiniminer.States.ClassSelectionState";
+                    nextState = typeof(ClassSelectionState);
 
                 // Change team.
                 if (key == Game.Settings.Key(GameAction.ChangeTeam))
-                    nextState = "Infiniminer.States.TeamSelectionState";
+                    nextState = typeof(TeamSelectionState);
             }
         }
 

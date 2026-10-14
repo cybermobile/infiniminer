@@ -89,13 +89,6 @@ namespace Infiniminer
 
     public static class XnaNetExtensions
     {
-        public static void Put(this NetDataWriter writer, Vector3 value)
-        {
-            writer.Put(value.X);
-            writer.Put(value.Y);
-            writer.Put(value.Z);
-        }
-
         public static Vector3 GetXnaVector3(this NetDataReader reader)
         {
             float x = reader.GetFloat();
