@@ -1,0 +1,11 @@
+#!/bin/sh
+# Starts Infiniminer from the AppImage; "Infiniminer.AppImage server" starts the dedicated server instead.
+# Settings, ban lists and saved maps go to ~/.config/Infiniminer (the AppImage itself is read-only), unless
+# the current directory has its own client.config.txt or server.config.txt.
+HERE="$(dirname "$(readlink -f "$0")")"
+GAME="$HERE/usr/lib/infiniminer"
+if [ "$1" = "server" ]; then
+    shift
+    exec "$GAME/InfiniminerServer" "$@"
+fi
+exec "$GAME/Infiniminer" "$@"

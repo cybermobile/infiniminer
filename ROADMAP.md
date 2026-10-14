@@ -56,7 +56,7 @@ The original server trusted almost everything the client said.
       Linux tarball with a menu entry script, Docker images for the server and the server list
 - [x] Installed copies keep settings, bans and saves in a per-user folder
 - [x] CI packages every platform on each push; version tags publish a GitHub release and the images
-- [ ] Later: notarised macOS builds and a signed Windows installer (need paid certificates), Flatpak
+- [ ] Later: notarised macOS builds and a signed Windows installer (need paid certificates), Flatpak (the AppImage covers most of what it would)
 
 ## 8. Code health
 - [x] Type-safe game states (`typeof(MainGameState)` instead of strings resolved by reflection)
@@ -75,4 +75,4 @@ The original server trusted almost everything the client said.
 - [x] Recent servers in the server list (the last five joined), and rejoining automatically when a server
       restarts with a new map after a match
 - [x] The local player's state and rules (equipment cycling, class and team changes) live in `LocalPlayer`
-- [ ] Linux AppImage
+- [x] Linux AppImage (`Infiniminer.AppImage`, or `Infiniminer.AppImage server` for the dedicated server)

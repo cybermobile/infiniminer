@@ -70,12 +70,14 @@ namespace Infiniminer
         // Where the config file, and everything else the game writes, lives:
         //  1. the working directory, if it has the config file (a server run from a data folder, dev runs);
         //  2. next to the executable, if that folder can be written (an unzipped download stays portable);
-        //  3. otherwise a per-user folder (installed under Program Files, or inside a macOS .app bundle),
+        //  3. otherwise a per-user folder (installed under Program Files, inside a macOS .app bundle, or an AppImage),
         //     seeded with the default files shipped next to the executable.
         public static string ResolveDataDirectory(string configFileName, params string[] otherSeedFiles)
         {
-            return ResolveDataDirectory(Environment.CurrentDirectory, AppContext.BaseDirectory, UserDataDirectory(), IsWritable,
-                configFileName, otherSeedFiles);
+            // An AppImage counts as installed even when it runs unpacked into a temporary (writable) folder.
+            bool appImage = Environment.GetEnvironmentVariable("APPIMAGE") != null;
+            return ResolveDataDirectory(Environment.CurrentDirectory, AppContext.BaseDirectory, UserDataDirectory(),
+                directory => !appImage && IsWritable(directory), configFileName, otherSeedFiles);
         }
 
         public static string ResolveDataDirectory(string currentDirectory, string baseDirectory, string userDirectory,

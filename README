@@ -33,7 +33,8 @@ an IP address or host name, optionally followed by ":port".
 To build release packages (self-contained: players don't need .NET installed) into dist/:
 
     packaging/package.sh win-x64      # portable zip + installer (the installer needs NSIS: apt install nsis)
-    packaging/package.sh linux-x64    # tar.gz; run install-desktop-entry.sh inside it to add a menu entry
+    packaging/package.sh linux-x64    # tar.gz (run install-desktop-entry.sh inside it to add a menu entry)
+                                      # and an AppImage ("Infiniminer.AppImage server" runs the server)
     packaging/package.sh osx-arm64    # zip with Infiniminer.app (Apple Silicon); osx-x64 for Intel Macs.
                                       # Build these on a Mac so the app gets signed.
 

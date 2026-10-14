@@ -7,7 +7,8 @@
 #             (the installer needs makensis: `apt install nsis`)
 #   osx-*     Infiniminer-<version>-<rid>.zip holding Infiniminer.app and the server. Run this on macOS:
 #             the app has to be signed there, and unsigned arm64 code won't start on Apple Silicon.
-#   linux-*   Infiniminer-<version>-<rid>.tar.gz
+#   linux-*   Infiniminer-<version>-<rid>.tar.gz, and for linux-x64 an Infiniminer-<version>-x86_64.AppImage
+#             (appimagetool is downloaded, pinned and checksummed, if it isn't installed)
 #
 # Every platform also gets InfiniminerServerList-<version>-<rid>, the public server list service.
 # Everything is self-contained: players don't need .NET installed.
@@ -45,6 +46,44 @@ zip_folder() { # parent folder, folder name, zip file
 
 tar_folder() { # parent folder, folder name, archive
     tar -C "$1" -czf "$3" "$2"
+}
+
+# appimagetool, pinned to a release and checked, unless one is installed.
+APPIMAGETOOL_VERSION=1.9.1
+APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+find_appimagetool() {
+    if command -v appimagetool > /dev/null; then
+        echo appimagetool
+        return
+    fi
+    tool=$root/out/tools/appimagetool-$APPIMAGETOOL_VERSION
+    if [ ! -x "$tool" ]; then
+        mkdir -p "$root/out/tools"
+        curl -fsSL -o "$tool.download" \
+            "https://github.com/AppImage/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-x86_64.AppImage" || return 1
+        echo "$APPIMAGETOOL_SHA256  $tool.download" | sha256sum -c --quiet - || { rm -f "$tool.download"; return 1; }
+        mv "$tool.download" "$tool"
+        chmod +x "$tool"
+    fi
+    echo "$tool"
+}
+
+build_appimage() { # published game folder
+    tool=$(find_appimagetool) || { echo "Could not get appimagetool; skipping the AppImage." >&2; return 0; }
+    appdir=$work/Infiniminer.AppDir
+    rm -rf "$appdir"
+    mkdir -p "$appdir/usr/lib"
+    cp -a "$1" "$appdir/usr/lib/infiniminer"
+    cp "$root/packaging/linux/AppRun" "$appdir/AppRun"
+    cp "$root/packaging/linux/infiniminer.png" "$appdir/infiniminer.png"
+    cp "$root/packaging/linux/infiniminer.png" "$appdir/.DirIcon"
+    # The tarball's menu entry points at its folder; inside the AppImage it runs AppRun.
+    sed -e 's|^Exec=.*|Exec=Infiniminer|' -e '/^Path=/d' -e 's|^Icon=.*|Icon=infiniminer|' \
+        "$root/packaging/linux/infiniminer.desktop" > "$appdir/infiniminer.desktop"
+    # appimagetool is itself an AppImage; extracting it avoids needing FUSE (CI runners, containers).
+    APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 VERSION=$version "$tool" --no-appstream "$appdir" \
+        "$dist/Infiniminer-$version-x86_64.AppImage" > "$work/appimagetool.log" 2>&1 \
+        || { cat "$work/appimagetool.log" >&2; return 1; }
 }
 
 case $rid in
@@ -91,6 +130,9 @@ case $rid in
         cp "$root/packaging/linux/infiniminer.png" "$root/packaging/linux/infiniminer.desktop" \
             "$root/packaging/linux/install-desktop-entry.sh" "$game/"
         tar_folder "$work" Infiniminer "$dist/$name.tar.gz"
+        if [ "$rid" = linux-x64 ]; then
+            build_appimage "$game"
+        fi
         ;;
 
     *)
@@ -108,4 +150,4 @@ case $rid in
 esac
 
 echo "Packages for $rid:"
-ls -l "$dist" | grep -- "-$version-$rid" || true
+ls -l "$dist" | grep -E -- "-$version-($rid|x86_64)" || true
