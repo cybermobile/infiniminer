@@ -41,9 +41,13 @@ macOS notes: downloaded builds are unsigned; run `xattr -dr com.apple.quarantine
 CONFIGURATION
 =============
 
-client.config.txt and server.config.txt (in bin/, copied next to the executables on build) work as
-before. They are read from the current directory if present, otherwise from next to the executable.
-New settings:
+Game settings can be changed in the OPTIONS menu (on the server browser, or Escape+O in game): name,
+resolution, fullscreen, interface scale, field of view, mouse sensitivity, invert mouse, volume, bloom,
+FPS counter and key bindings. The window can also be resized freely; menus scale to fit it.
+
+Settings are saved in client.config.txt. It and server.config.txt (in bin/, copied next to the
+executables on build) are read from the current directory if present, otherwise from next to the
+executable. Other new settings:
 
   port        (server) UDP port to listen on, default 5565. LAN discovery only looks on 5565.
   serverlist  (client and server) URL of a public server list. The original list service is gone, so

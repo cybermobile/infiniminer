@@ -15,12 +15,12 @@ The original server trusted almost everything the client said.
 - [x] Tool use uses the server's idea of where the player is
 - [x] Admin `tp <player> <x> <y> <z>` command
 
-## 2. Settings and display
-- [ ] In-game settings screen (name, resolution, fullscreen, volume, mouse sensitivity, invert Y, FOV, bloom, FPS counter)
-- [ ] Settings saved to client.config.txt
-- [ ] Rebindable keys
-- [ ] Resizable window; menus scale to fit the window
-- [ ] HUD scaling for high-resolution screens
+## 2. Settings and display — done
+- [x] In-game settings screen (name, resolution, fullscreen, volume, mouse sensitivity, invert Y, FOV, bloom, FPS counter)
+- [x] Settings saved to client.config.txt
+- [x] Rebindable keys
+- [x] Resizable window; menus scale to fit the window
+- [x] HUD scaling for high-resolution screens
 
 ## 3. Unfinished features from the original
 - [ ] Teleporter blocks (textures, sound and commented-out code exist)

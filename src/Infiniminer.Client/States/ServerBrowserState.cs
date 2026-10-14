@@ -19,9 +19,10 @@ namespace Infiniminer.States
         bool directConnectIPEnter = false;
         string directConnectIP = "";
 
-        ClickRegion[] clkMenuServer = new ClickRegion[2] {
+        ClickRegion[] clkMenuServer = new ClickRegion[3] {
             new ClickRegion(new Rectangle(763,713,243,42), "refresh"),
-            new ClickRegion(new Rectangle(0,713,425,42), "direct")
+            new ClickRegion(new Rectangle(0,713,425,42), "direct"),
+            new ClickRegion(new Rectangle(440,713,300,42), "options")
         };
 
         public override void OnEnter(string oldState)
@@ -32,10 +33,8 @@ namespace Infiniminer.States
 
             texMenu = Game.Assets.Texture("menus/tex_menu_server");
 
-            drawRect = new Rectangle(_SM.GraphicsDevice.Viewport.Width / 2 - 1024 / 2,
-                                     _SM.GraphicsDevice.Viewport.Height / 2 - 768 / 2,
-                                     1024,
-                                     1024);
+            // Menus are drawn on a 1024x768 canvas that is scaled to fit the window.
+            drawRect = new Rectangle(0, 0, 1024, 1024);
 
             uiFont = Game.Assets.UiFont;
 
@@ -65,7 +64,7 @@ namespace Infiniminer.States
         {
             descWidths = new List<int>();
             SpriteBatch spriteBatch = _SM.SpriteBatch;
-            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, SamplerState.PointClamp);
+            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, Game.MenuSampler, null, null, null, Game.MenuTransform);
             spriteBatch.Draw(texMenu, drawRect, Color.White);
 
             int drawY = 80;
@@ -75,21 +74,26 @@ namespace Infiniminer.States
                 {
                     int textWidth = (int)(uiFont.MeasureString(server.GetServerDesc()).X);
                     descWidths.Add(textWidth + 30);
-                    spriteBatch.DrawString(uiFont, server.GetServerDesc(), new Vector2(_SM.GraphicsDevice.Viewport.Width / 2 - textWidth / 2, drawRect.Y + drawY), Color.White);
+                    spriteBatch.DrawString(uiFont, server.GetServerDesc(), new Vector2(InfiniminerGame.MenuWidth / 2 - textWidth / 2, drawRect.Y + drawY), Color.White);
                     drawY += 25;
                 }
             }
 
-            spriteBatch.DrawString(uiFont, InfiniminerGame.INFINIMINER_VERSION, new Vector2(10, _SM.GraphicsDevice.Viewport.Height - 20), Color.White);
+            spriteBatch.DrawString(uiFont, InfiniminerGame.INFINIMINER_VERSION, new Vector2(10, InfiniminerGame.MenuHeight - 20), Color.White);
 
             if (Game.StatusMessage != "")
             {
                 int textWidth = (int)uiFont.MeasureString(Game.StatusMessage).X;
-                spriteBatch.DrawString(uiFont, Game.StatusMessage, new Vector2(_SM.GraphicsDevice.Viewport.Width / 2 - textWidth / 2, drawRect.Y + 665), InfiniminerGame.IM_RED);
+                spriteBatch.DrawString(uiFont, Game.StatusMessage, new Vector2(InfiniminerGame.MenuWidth / 2 - textWidth / 2, drawRect.Y + 665), InfiniminerGame.IM_RED);
             }
 
             if (directConnectIPEnter)
                 spriteBatch.DrawString(uiFont, "ENTER IP: " + directConnectIP, new Vector2(drawRect.X + 30, drawRect.Y + 690), Color.White);
+
+            // The options button sits between the two buttons painted into the menu image.
+            SpriteFontBase titleFont = Game.Assets.TitleFont;
+            Vector2 optionsSize = titleFont.MeasureString("[ OPTIONS ]");
+            spriteBatch.DrawString(titleFont, "[ OPTIONS ]", new Vector2((int)(590 - optionsSize.X / 2), 711), Color.White);
 
             spriteBatch.End();
         }
@@ -195,12 +199,15 @@ namespace Infiniminer.States
 
         public override void OnMouseDown(MouseButton button, int x, int y)
         {
+            Point menuPoint = Game.ToMenu(x, y);
+            x = menuPoint.X;
+            y = menuPoint.Y;
             if (directConnectIPEnter == false)
             {
                 int serverIndex = (y - drawRect.Y - 75) / 25;
                 if (serverIndex >= 0 && serverIndex < serverList.Count && serverIndex < descWidths.Count)
                 {
-                    int distanceFromCenter = Math.Abs(_SM.GraphicsDevice.Viewport.Width / 2 - x);
+                    int distanceFromCenter = Math.Abs(InfiniminerGame.MenuWidth / 2 - x);
                     if (distanceFromCenter < descWidths[serverIndex] / 2)
                     {
                         Game.JoinGame(serverList[serverIndex].ipEndPoint);
@@ -217,6 +224,11 @@ namespace Infiniminer.States
                         _P.PlaySound(InfiniminerSound.ClickHigh);
                         Game.StatusMessage = "";
                         Game.StartServerDiscovery();
+                        break;
+
+                    case "options":
+                        _P.PlaySound(InfiniminerSound.ClickHigh);
+                        nextState = "Infiniminer.States.SettingsState";
                         break;
 
                     case "direct":

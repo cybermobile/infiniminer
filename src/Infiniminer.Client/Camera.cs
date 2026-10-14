@@ -9,15 +9,22 @@ namespace Infiniminer
         public Vector3 Position;
         public Matrix ViewMatrix = Matrix.Identity;
         public Matrix ProjectionMatrix = Matrix.Identity;
+        public float FieldOfView = 70;
+        readonly GraphicsDevice device;
 
         public Camera(GraphicsDevice device)
         {
             Pitch = 0;
             Yaw = 0;
             Position = Vector3.Zero;
+            this.device = device;
+            UpdateProjection();
+        }
 
-            float aspectRatio = device.Viewport.AspectRatio;
-            this.ProjectionMatrix = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(70), aspectRatio, 0.01f, 1000.0f);
+        // Recomputed every update, so window resizes and field of view changes apply immediately.
+        void UpdateProjection()
+        {
+            this.ProjectionMatrix = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(FieldOfView), device.Viewport.AspectRatio, 0.01f, 1000.0f);
         }
 
         // Returns a unit vector pointing in the direction that we're looking.
@@ -35,6 +42,7 @@ namespace Infiniminer
 
         public void Update()
         {
+            UpdateProjection();
             Vector3 target = Position + GetLookVector();
             this.ViewMatrix = Matrix.CreateLookAt(Position, target, Vector3.Up);
         }

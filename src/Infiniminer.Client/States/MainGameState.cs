@@ -36,6 +36,7 @@ namespace Infiniminer.States
 
             // Update the current screen effect.
             _P.screenEffectCounter += gameTime.ElapsedGameTime.TotalSeconds;
+            _P.playerCamera.FieldOfView = Game.Settings.FieldOfView;
 
             // Update engines.
             _P.skyplaneEngine.Update(gameTime);
@@ -62,8 +63,10 @@ namespace Infiniminer.States
                     if (Game.InvertMouseYAxis)
                         dy = -dy;
 
-                    _P.playerCamera.Yaw -= dx * 0.005f;
-                    _P.playerCamera.Pitch = (float)Math.Min(Math.PI * 0.49, Math.Max(-Math.PI * 0.49, _P.playerCamera.Pitch - dy * 0.005f));
+                    // Sensitivity 5 is the original game's 0.005 radians per pixel.
+                    float sensitivity = Game.Settings.MouseSensitivity * 0.001f;
+                    _P.playerCamera.Yaw -= dx * sensitivity;
+                    _P.playerCamera.Pitch = (float)Math.Min(Math.PI * 0.49, Math.Max(-Math.PI * 0.49, _P.playerCamera.Pitch - dy * sensitivity));
                 }
                 else
                 {
@@ -210,13 +213,13 @@ namespace Infiniminer.States
 
             if (_P.chatMode == ChatMessageType.None)
             {
-                if (keyState.IsKeyDown(Keys.W))
+                if (Game.Settings.IsDown(keyState, GameAction.MoveForward))
                     moveVector += _P.playerCamera.GetLookVector();
-                if (keyState.IsKeyDown(Keys.S))
+                if (Game.Settings.IsDown(keyState, GameAction.MoveBack))
                     moveVector -= _P.playerCamera.GetLookVector();
-                if (keyState.IsKeyDown(Keys.D))
+                if (Game.Settings.IsDown(keyState, GameAction.MoveRight))
                     moveVector += _P.playerCamera.GetRightVector();
-                if (keyState.IsKeyDown(Keys.A))
+                if (Game.Settings.IsDown(keyState, GameAction.MoveLeft))
                     moveVector -= _P.playerCamera.GetRightVector();
             }
             
@@ -320,6 +323,14 @@ namespace Infiniminer.States
             {
                 _P.serverPeer?.Disconnect();
                 nextState = "Infiniminer.States.ServerBrowserState";
+                return;
+            }
+
+            // Options!
+            if (key == Keys.O && Keyboard.GetState().IsKeyDown(Keys.Escape))
+            {
+                nextState = "Infiniminer.States.SettingsState";
+                return;
             }
 
             // Pixelcide!
@@ -359,16 +370,16 @@ namespace Infiniminer.States
                 return;
             }
 
-            if (key == Keys.Y)
+            if (key == Game.Settings.Key(GameAction.SayAll))
                 _P.chatMode = ChatMessageType.SayAll;
 
-            if (key == Keys.U)
+            if (key == Game.Settings.Key(GameAction.SayTeam))
                 _P.chatMode = _P.playerTeam == PlayerTeam.Red ? ChatMessageType.SayRedTeam : ChatMessageType.SayBlueTeam;
 
             if (!_P.playerDead)
             {
                 // Jump!
-                if (key == Keys.Space)
+                if (key == Game.Settings.Key(GameAction.Jump))
                 {
                     Vector3 footPosition = _P.playerPosition + new Vector3(0f, -1.5f, 0f);
                     if (_P.blockEngine.SolidAtPointForPlayer(footPosition) && _P.playerVelocity.Y == 0)
@@ -380,7 +391,7 @@ namespace Infiniminer.States
                 }
 
                 // Change weapon!
-                if (key == Keys.E)
+                if (key == Game.Settings.Key(GameAction.NextTool))
                 {
                     _P.PlaySound(InfiniminerSound.ClickLow);
                     _P.playerToolSelected += 1;
@@ -389,7 +400,7 @@ namespace Infiniminer.States
                 }
 
                 // Change block type!
-                if (key == Keys.R && _P.playerTools[_P.playerToolSelected] == PlayerTools.ConstructionGun)
+                if (key == Game.Settings.Key(GameAction.NextBlock) && _P.playerTools[_P.playerToolSelected] == PlayerTools.ConstructionGun)
                 {
                     _P.PlaySound(InfiniminerSound.ClickLow);
                     _P.playerBlockSelected += 1;
@@ -400,12 +411,12 @@ namespace Infiniminer.States
                 // Deposit and withdraw from a bank.
                 if (_P.AtBankTerminal())
                 {
-                    if (key == Keys.D1)
+                    if (key == Game.Settings.Key(GameAction.DepositOre))
                     {
                         _P.DepositOre();
                         _P.PlaySound(InfiniminerSound.ClickHigh);
                     }
-                    if (key == Keys.D2)
+                    if (key == Game.Settings.Key(GameAction.WithdrawOre))
                     {
                         _P.WithdrawOre();
                         _P.PlaySound(InfiniminerSound.ClickHigh);
@@ -413,7 +424,7 @@ namespace Infiniminer.States
                 }
 
                 // Radar pings.
-                if (key == Keys.Q)
+                if (key == Game.Settings.Key(GameAction.Ping))
                 {
                     NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerPing);
                     msgBuffer.Put(_P.playerMyId);
@@ -421,11 +432,11 @@ namespace Infiniminer.States
                 }
 
                 // Change class.
-                if (key == Keys.M && _P.playerPosition.Y > 64 - InfiniminerGame.GROUND_LEVEL)
+                if (key == Game.Settings.Key(GameAction.ChangeClass) && _P.playerPosition.Y > 64 - InfiniminerGame.GROUND_LEVEL)
                     nextState = "Infiniminer.States.ClassSelectionState";
 
                 // Change team.
-                if (key == Keys.N)
+                if (key == Game.Settings.Key(GameAction.ChangeTeam))
                     nextState = "Infiniminer.States.TeamSelectionState";
             }
         }

@@ -9,17 +9,137 @@ namespace Infiniminer
     public class InfiniminerGame : StateMasher.StateMachine
     {
         double timeSinceLastUpdate = 0;
-        string playerHandle = "Player";
-        float volumeLevel = 1.0f;
-        string serverListUrl = "";
         GameTime currentGameTime = new GameTime();
         string deferredState = null;
         Task<List<ServerInformation>> publicServerListTask = null;
 
-        public bool RenderPretty = true;
-        public bool DrawFrameRate = false;
-        public bool InvertMouseYAxis = false;
-        public bool NoSound = false;
+        public ClientSettings Settings { get; private set; } = new ClientSettings();
+        public bool NoSound = false;    // set from the config, or when no audio device is available
+        bool resizing = false;
+
+        public bool DrawFrameRate
+        {
+            get { return Settings.ShowFps; }
+        }
+
+        public bool InvertMouseYAxis
+        {
+            get { return Settings.InvertY; }
+        }
+
+        // The original menus were drawn for a 1024x768 window; they are scaled to fit whatever the window is.
+        public const int MenuWidth = 1024, MenuHeight = 768;
+
+        public float MenuScale
+        {
+            get { return Math.Min(GraphicsDevice.Viewport.Width / (float)MenuWidth, GraphicsDevice.Viewport.Height / (float)MenuHeight); }
+        }
+
+        public Matrix MenuTransform
+        {
+            get
+            {
+                float scale = MenuScale;
+                Vector2 offset = new Vector2((GraphicsDevice.Viewport.Width - MenuWidth * scale) / 2, (GraphicsDevice.Viewport.Height - MenuHeight * scale) / 2);
+                return Matrix.CreateScale(scale) * Matrix.CreateTranslation((int)offset.X, (int)offset.Y, 0);
+            }
+        }
+
+        // Converts a mouse position on screen into menu coordinates.
+        public Point ToMenu(int x, int y)
+        {
+            Vector2 menu = Vector2.Transform(new Vector2(x, y), Matrix.Invert(MenuTransform));
+            return new Point((int)menu.X, (int)menu.Y);
+        }
+
+        // Menus are point-sampled at whole-number scales (crisp pixels), smoothed otherwise.
+        public SamplerState MenuSampler
+        {
+            get { return Math.Abs(MenuScale - MathF.Round(MenuScale)) < 0.01f ? SamplerState.PointClamp : SamplerState.LinearClamp; }
+        }
+
+        // The in-game interface was also laid out for 1024x768; on big screens it is drawn at 2x or 3x.
+        public int HudScale
+        {
+            get
+            {
+                if (Settings.UiScale > 0)
+                    return Settings.UiScale;
+                int automatic = (int)Math.Floor(Math.Min(GraphicsDevice.Viewport.Width / (float)MenuWidth, GraphicsDevice.Viewport.Height / (float)MenuHeight));
+                return Math.Clamp(automatic, 1, ClientSettings.MaxUiScale);
+            }
+        }
+
+        public string ConfigPath
+        {
+            get { return Path.Combine(DataDirectory, "client.config.txt"); }
+        }
+
+        public void SaveSettings()
+        {
+            try
+            {
+                Settings.Save(ConfigPath);
+            }
+            catch (Exception e)
+            {
+                StatusMessage = "ERROR: COULD NOT SAVE SETTINGS: " + Sanitize(e.Message).ToUpperInvariant();
+            }
+        }
+
+        // Applies the resolution and fullscreen settings to the window.
+        public void ApplyDisplaySettings()
+        {
+            resizing = true;
+            graphicsDeviceManager.IsFullScreen = Settings.Fullscreen;
+            graphicsDeviceManager.PreferredBackBufferWidth = Settings.Width;
+            graphicsDeviceManager.PreferredBackBufferHeight = Settings.Height;
+            graphicsDeviceManager.ApplyChanges();
+            resizing = false;
+            OnDisplayChanged();
+        }
+
+        // Turns the bloom post-process on or off.
+        public void SetPretty(bool pretty)
+        {
+            Settings.Pretty = pretty;
+            Bloom?.Dispose();
+            Bloom = null;
+            if (pretty)
+            {
+                Bloom = new BloomComponent();
+                Bloom.Load(GraphicsDevice, SpriteBatch);
+            }
+        }
+
+        public void SetVolume(float volume)
+        {
+            Settings.Volume = Math.Clamp(volume, 0, 1);
+            if (propertyBag != null)
+                propertyBag.volumeLevel = Settings.Volume;
+            TitleMusic.SetVolume(Settings.Volume);
+        }
+
+        void OnDisplayChanged()
+        {
+            // Render targets are sized to the window, so rebuild them.
+            if (Bloom != null)
+                SetPretty(true);
+        }
+
+        void OnClientSizeChanged(object sender, EventArgs e)
+        {
+            if (resizing || graphicsDeviceManager.IsFullScreen)
+                return;
+            Rectangle bounds = Window.ClientBounds;
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+                return;
+            if (bounds.Width == GraphicsDevice.PresentationParameters.BackBufferWidth && bounds.Height == GraphicsDevice.PresentationParameters.BackBufferHeight)
+                return;
+            Settings.Width = bounds.Width;
+            Settings.Height = bounds.Height;
+            ApplyDisplaySettings();
+        }
 
         public Assets Assets { get; private set; }
         public AlphaTestEffect SpriteEffect { get; private set; }
@@ -71,6 +191,7 @@ namespace Infiniminer
             request.Put(GameConstants.DiscoveryRequest);
             propertyBag.netClient.SendBroadcast(request, GameConstants.DefaultPort);
 
+            string serverListUrl = Settings.ServerListUrl;
             publicServerListTask = serverListUrl == "" ? null : Task.Run(() => FetchPublicServerList(serverListUrl));
         }
 
@@ -456,22 +577,15 @@ namespace Infiniminer
 
         protected override void Initialize()
         {
-            graphicsDeviceManager.IsFullScreen = false;
-            graphicsDeviceManager.PreferredBackBufferWidth = 1024;
-            graphicsDeviceManager.PreferredBackBufferHeight = 768;
             graphicsDeviceManager.PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8;
 
-            DatafileLoader dataFile = new DatafileLoader(Path.Combine(DataDirectory, "client.config.txt"));
-            graphicsDeviceManager.PreferredBackBufferWidth = dataFile.GetInt("width", graphicsDeviceManager.PreferredBackBufferWidth);
-            graphicsDeviceManager.PreferredBackBufferHeight = dataFile.GetInt("height", graphicsDeviceManager.PreferredBackBufferHeight);
-            graphicsDeviceManager.IsFullScreen = dataFile.GetBool("fullscreen", graphicsDeviceManager.IsFullScreen);
-            playerHandle = dataFile.GetString("handle", playerHandle);
-            DrawFrameRate = dataFile.GetBool("showfps", DrawFrameRate);
-            InvertMouseYAxis = dataFile.GetBool("yinvert", InvertMouseYAxis);
-            NoSound = dataFile.GetBool("nosound", NoSound);
-            RenderPretty = dataFile.GetBool("pretty", RenderPretty);
-            volumeLevel = Math.Max(0, Math.Min(1, dataFile.GetFloat("volume", volumeLevel)));
-            serverListUrl = dataFile.GetString("serverlist", serverListUrl);
+            Settings = ClientSettings.Load(ConfigPath);
+            NoSound = Settings.NoSound;
+            graphicsDeviceManager.IsFullScreen = Settings.Fullscreen;
+            graphicsDeviceManager.PreferredBackBufferWidth = Settings.Width;
+            graphicsDeviceManager.PreferredBackBufferHeight = Settings.Height;
+            Window.AllowUserResizing = true;
+            Window.ClientSizeChanged += OnClientSizeChanged;
 
             graphicsDeviceManager.ApplyChanges();
             Window.Title = "Infiniminer";
@@ -501,8 +615,8 @@ namespace Infiniminer
             }
 
             propertyBag = new Infiniminer.PropertyBag(this);
-            propertyBag.playerHandle = playerHandle;
-            propertyBag.volumeLevel = volumeLevel;
+            propertyBag.playerHandle = Settings.Handle;
+            propertyBag.volumeLevel = Settings.Volume;
             propertyBag.netListener.PeerDisconnectedEvent += OnPeerDisconnected;
             propertyBag.netListener.NetworkReceiveEvent += OnNetworkReceive;
             propertyBag.netListener.NetworkReceiveUnconnectedEvent += OnNetworkReceiveUnconnected;
@@ -514,11 +628,7 @@ namespace Infiniminer
             base.LoadContent();
             Assets = new Assets(GraphicsDevice);
             SpriteEffect = new AlphaTestEffect(GraphicsDevice);
-            if (RenderPretty)
-            {
-                Bloom = new BloomComponent();
-                Bloom.Load(GraphicsDevice, SpriteBatch);
-            }
+            SetPretty(Settings.Pretty);
 
             // Initialize the property bag.
             ResetPropertyBag();

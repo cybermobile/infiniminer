@@ -25,10 +25,8 @@ namespace Infiniminer.States
 
             texMenu = Game.Assets.Texture("menus/tex_menu_team");
 
-            drawRect = new Rectangle(_SM.GraphicsDevice.Viewport.Width / 2 - 1024 / 2,
-                                     _SM.GraphicsDevice.Viewport.Height / 2 - 768 / 2,
-                                     1024,
-                                     1024);
+            // Menus are drawn on a 1024x768 canvas that is scaled to fit the window.
+            drawRect = new Rectangle(0, 0, 1024, 1024);
 
             uiFont = Game.Assets.UiFont;
 
@@ -56,7 +54,7 @@ namespace Infiniminer.States
 
         public void QuickDrawText(SpriteBatch spriteBatch, string text, int y, Color color)
         {
-            spriteBatch.DrawString(uiFont, text, new Vector2(_SM.GraphicsDevice.Viewport.Width / 2 - uiFont.MeasureString(text).X / 2, drawRect.Y + y), color);
+            spriteBatch.DrawString(uiFont, text, new Vector2(InfiniminerGame.MenuWidth / 2 - uiFont.MeasureString(text).X / 2, drawRect.Y + y), color);
         }
 
         public override void OnRenderAtUpdate(GraphicsDevice graphicsDevice, GameTime gameTime)
@@ -71,7 +69,7 @@ namespace Infiniminer.States
             }
 
             SpriteBatch spriteBatch = _SM.SpriteBatch;
-            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, SamplerState.PointClamp);
+            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, Game.MenuSampler, null, null, null, Game.MenuTransform);
             spriteBatch.Draw(texMenu, drawRect, Color.White);
             QuickDrawText(spriteBatch, "" + redTeamCount + " PLAYERS", 360, InfiniminerGame.IM_RED);
             QuickDrawText(spriteBatch, "" + blueTeamCount + " PLAYERS", 620, InfiniminerGame.IM_BLUE);
@@ -91,6 +89,9 @@ namespace Infiniminer.States
 
         public override void OnMouseDown(MouseButton button, int x, int y)
         {
+            Point menuPoint = Game.ToMenu(x, y);
+            x = menuPoint.X;
+            y = menuPoint.Y;
             x -= drawRect.X;
             y -= drawRect.Y;
             switch (ClickRegion.HitTest(clkTeamMenu, new Point(x, y)))

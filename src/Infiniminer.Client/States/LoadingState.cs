@@ -42,10 +42,8 @@ namespace Infiniminer.States
 
             texMenu = Game.Assets.Texture("menus/tex_menu_loading");
 
-            drawRect = new Rectangle(_SM.GraphicsDevice.Viewport.Width / 2 - 1024 / 2,
-                                     _SM.GraphicsDevice.Viewport.Height / 2 - 768 / 2,
-                                     1024,
-                                     1024);
+            // Menus are drawn on a 1024x768 canvas that is scaled to fit the window.
+            drawRect = new Rectangle(0, 0, 1024, 1024);
 
             uiFont = Game.Assets.UiFont;
 
@@ -82,11 +80,11 @@ namespace Infiniminer.States
             string progressText = String.Format("{0:00}% LOADED", dataPacketsRecieved / 256.0f * 100);
 
             SpriteBatch spriteBatch = _SM.SpriteBatch;
-            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, SamplerState.PointClamp);
+            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, Game.MenuSampler, null, null, null, Game.MenuTransform);
             spriteBatch.Draw(texMenu, drawRect, Color.White);
-            spriteBatch.DrawString(uiFont, progressText, new Vector2(((int)(_SM.GraphicsDevice.Viewport.Width / 2 - uiFont.MeasureString(progressText).X / 2)), drawRect.Y + 430), Color.White);
+            spriteBatch.DrawString(uiFont, progressText, new Vector2(((int)(InfiniminerGame.MenuWidth / 2 - uiFont.MeasureString(progressText).X / 2)), drawRect.Y + 430), Color.White);
             for (int i=0; i<currentHint.Length; i++)
-                spriteBatch.DrawString(uiFont, currentHint[i], new Vector2(((int)(_SM.GraphicsDevice.Viewport.Width / 2 - uiFont.MeasureString(currentHint[i]).X / 2)), drawRect.Y + 600+25*i), Color.White);
+                spriteBatch.DrawString(uiFont, currentHint[i], new Vector2(((int)(InfiniminerGame.MenuWidth / 2 - uiFont.MeasureString(currentHint[i]).X / 2)), drawRect.Y + 600+25*i), Color.White);
             spriteBatch.End();
         }
 
@@ -106,6 +104,9 @@ namespace Infiniminer.States
 
         public override void OnMouseDown(MouseButton button, int x, int y)
         {
+            Point menuPoint = Game.ToMenu(x, y);
+            x = menuPoint.X;
+            y = menuPoint.Y;
 
         }
 

@@ -119,6 +119,7 @@ namespace Infiniminer
 
             // Create a camera.
             playerCamera = new Camera(gameInstance.GraphicsDevice);
+            playerCamera.FieldOfView = gameInstance.Settings.FieldOfView;
             UpdateCamera();
 
             // Load sounds.

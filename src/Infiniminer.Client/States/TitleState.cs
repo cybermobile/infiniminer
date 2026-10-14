@@ -18,10 +18,8 @@ namespace Infiniminer.States
 
             texMenu = Game.Assets.Texture("menus/tex_menu_title");
 
-            drawRect = new Rectangle(_SM.GraphicsDevice.Viewport.Width / 2 - 1024 / 2,
-                                     _SM.GraphicsDevice.Viewport.Height / 2 - 768 / 2,
-                                     1024,
-                                     1024);
+            // Menus are drawn on a 1024x768 canvas that is scaled to fit the window.
+            drawRect = new Rectangle(0, 0, 1024, 1024);
         }
 
         public override void OnLeave(string newState)
@@ -45,7 +43,7 @@ namespace Infiniminer.States
         public override void OnRenderAtUpdate(GraphicsDevice graphicsDevice, GameTime gameTime)
         {
             SpriteBatch spriteBatch = _SM.SpriteBatch;
-            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, SamplerState.PointClamp);
+            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, Game.MenuSampler, null, null, null, Game.MenuTransform);
             spriteBatch.Draw(texMenu, drawRect, Color.White);
             spriteBatch.End();
         }
@@ -65,6 +63,9 @@ namespace Infiniminer.States
 
         public override void OnMouseDown(MouseButton button, int x, int y)
         {
+            Point menuPoint = Game.ToMenu(x, y);
+            x = menuPoint.X;
+            y = menuPoint.Y;
             nextState = "Infiniminer.States.ServerBrowserState";
             _P.PlaySound(InfiniminerSound.ClickHigh);
         }

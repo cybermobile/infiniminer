@@ -17,6 +17,7 @@ namespace Infiniminer
 
         public SpriteFontBase UiFont { get; private set; }
         public SpriteFontBase RadarFont { get; private set; }
+        public SpriteFontBase TitleFont { get; private set; }
 
         public Assets(GraphicsDevice graphicsDevice)
         {
@@ -28,6 +29,7 @@ namespace Infiniminer
             // look-alike Silkscreen font (SIL Open Font License) is used instead.
             UiFont = LoadFont(16, "04B_08__.TTF", "04b08.ttf", "04B_08.TTF");
             RadarFont = LoadFont(8, "04B_03B_.TTF", "04b03b.ttf", "04B_03B.TTF");
+            TitleFont = LoadFont(48, "04B_08__.TTF", "04b08.ttf", "04B_08.TTF");
         }
 
         string AssetPath(string name, string extension)
@@ -154,6 +156,13 @@ namespace Infiniminer
         {
             stopRequested = true;
             instance?.Stop();
+        }
+
+        public void SetVolume(float volume)
+        {
+            this.volume = volume;
+            if (instance != null)
+                instance.Volume = volume;
         }
 
         static SoundData Decode(string path)

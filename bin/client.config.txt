@@ -21,3 +21,28 @@ nosound = false
 # Public server list to show in the server browser (LAN servers are always found automatically).
 # Example: serverlist = http://example.com/plain
 serverlist = 
+
+# Mouse sensitivity from 1 to 20 (5 is the original game's), field of view in degrees,
+# and interface scale (0 picks one automatically from the window size).
+sensitivity = 5
+fov = 70
+uiscale = 0
+
+# Key bindings (names from https://docs.monogame.net/api/Microsoft.Xna.Framework.Input.Keys.html).
+# These can also be changed in game: OPTIONS > CONTROLS.
+key_moveforward = W
+key_moveback = S
+key_moveleft = A
+key_moveright = D
+key_jump = Space
+key_nexttool = E
+key_nextblock = R
+key_ping = Q
+key_sayall = Y
+key_sayteam = U
+key_changeclass = M
+key_changeteam = N
+key_scoreboard = Tab
+key_help = F1
+key_depositore = D1
+key_withdrawore = D2

@@ -26,10 +26,8 @@ namespace Infiniminer.States
             texMenuRed = Game.Assets.Texture("menus/tex_menu_class_red");
             texMenuBlue = Game.Assets.Texture("menus/tex_menu_class_blue");
 
-            drawRect = new Rectangle(_SM.GraphicsDevice.Viewport.Width / 2 - 1024 / 2,
-                                     _SM.GraphicsDevice.Viewport.Height / 2 - 768 / 2,
-                                     1024,
-                                     1024);
+            // Menus are drawn on a 1024x768 canvas that is scaled to fit the window.
+            drawRect = new Rectangle(0, 0, 1024, 1024);
 
             _P.KillPlayer("");
         }
@@ -60,7 +58,7 @@ namespace Infiniminer.States
         public override void OnRenderAtUpdate(GraphicsDevice graphicsDevice, GameTime gameTime)
         {
             SpriteBatch spriteBatch = _SM.SpriteBatch;
-            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, SamplerState.PointClamp);
+            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, Game.MenuSampler, null, null, null, Game.MenuTransform);
             spriteBatch.Draw((_P.playerTeam == PlayerTeam.Red)?texMenuRed:texMenuBlue, drawRect, Color.White);
             spriteBatch.End();
         }
@@ -77,6 +75,9 @@ namespace Infiniminer.States
 
         public override void OnMouseDown(MouseButton button, int x, int y)
         {
+            Point menuPoint = Game.ToMenu(x, y);
+            x = menuPoint.X;
+            y = menuPoint.Y;
             x -= drawRect.X;
             y -= drawRect.Y;
             switch (ClickRegion.HitTest(clkClassMenu, new Point(x, y)))
