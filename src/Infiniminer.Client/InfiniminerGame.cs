@@ -297,6 +297,8 @@ namespace Infiniminer
             return serverList;
         }
 
+        string announcedInternetStatus;
+
         public void UpdateNetwork(GameTime gameTime)
         {
             currentGameTime = gameTime;
@@ -308,6 +310,17 @@ namespace Infiniminer
                 timeSinceLastUpdate = 0;
                 if (CurrentStateType == typeof(States.MainGameState))
                     propertyBag.SendPlayerUpdate();
+            }
+
+            // Tell the host when their game opens to the internet (or why it couldn't).
+            string internet = HostedServer?.PortForward?.Status;
+            if (internet != announcedInternetStatus)
+            {
+                announcedInternetStatus = internet;
+                if (internet != null && !internet.EndsWith("...") && propertyBag.downloadComplete)
+                    propertyBag.chatLog.Add(internet.StartsWith("OPEN")
+                        ? "YOUR GAME IS " + internet + " (ESCAPE > INTERNET COPIES IT)"
+                        : "YOUR GAME IS LAN ONLY: " + internet, ChatMessageType.SayAll);
             }
 
             // Recieve messages from the server. State changes are applied afterwards, because entering

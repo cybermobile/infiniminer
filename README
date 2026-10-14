@@ -25,6 +25,11 @@ game (pick the world size, player limit, time limit and so on), and players on y
 their server list. The in-game menu's END GAME stops it. A dedicated server is still the way to run a game
 that outlives your session.
 
+To let friends on the internet join a game you host, set INTERNET PLAYERS to OPEN ROUTER (UPNP) in HOST
+GAME (or "upnp = true" for a dedicated server). The game asks your router to forward its port and tells
+you the address to give out (the in-game menu's INTERNET row copies it). If the router doesn't support it
+or has it switched off, the game says so: forward UDP port 5565 to your computer by hand instead.
+
 The client finds servers on your LAN automatically, and lists the last five servers you joined (so a
 server joined by address is one click away next time). When a match ends and the server restarts with a
 new map, the game rejoins it by itself. Use [ DIRECT CONNECT ] for anything else; it accepts

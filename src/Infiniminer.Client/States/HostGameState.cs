@@ -125,6 +125,12 @@ namespace Infiniminer.States
                 },
                 new Row
                 {
+                    Label = "INTERNET PLAYERS",
+                    Value = () => Settings.HostInternet ? "OPEN ROUTER (UPNP)" : "LAN ONLY",
+                    Change = direction => { Settings.HostInternet = !Settings.HostInternet; Changed(); },
+                },
+                new Row
+                {
                     Label = "SANDBOX (FREE BUILDING)",
                     Value = () => OnOff(Settings.HostSandbox),
                     Change = direction => { Settings.HostSandbox = !Settings.HostSandbox; Changed(); },

@@ -19,6 +19,12 @@ namespace Infiniminer
         public volatile string Error;       // set if the server could not start
         public int Port { get; private set; }
 
+        // The router port forward, when the game is open to the internet.
+        public InternetPortForward PortForward
+        {
+            get { return server?.PortForward; }
+        }
+
         public bool Running
         {
             get { return thread.IsAlive; }

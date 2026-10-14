@@ -49,6 +49,13 @@ namespace Infiniminer.States
                 new Row { Label = "OPTIONS", Activate = () => Go(typeof(SettingsState)) },
                 new Row
                 {
+                    Label = "INTERNET",
+                    Value = () => Game.HostedServer?.PortForward?.ShortStatus ?? (Game.IsHosting ? "LAN ONLY" : "-"),
+                    Enabled = () => Game.HostedServer?.PortForward?.ExternalEndPoint != null,
+                    Activate = CopyInternetAddress,
+                },
+                new Row
+                {
                     Label = "RESPAWN",
                     Value = () => "COMMITS PIXELCIDE",
                     Enabled = () => !_P.player.Dead,
@@ -61,6 +68,23 @@ namespace Infiniminer.States
                     Activate = () => { Game.LeaveServer(); Go(typeof(ServerBrowserState)); },
                 },
             };
+        }
+
+        void CopyInternetAddress()
+        {
+            string address = Game.HostedServer?.PortForward?.ExternalEndPoint;
+            if (address == null)
+                return;
+            try
+            {
+                TextCopy.ClipboardService.SetText(address);
+                _P.chatLog.Add("COPIED " + address + " - SEND IT TO YOUR FRIENDS TO JOIN WITH DIRECT CONNECT.", ChatMessageType.SayAll);
+            }
+            catch (Exception)
+            {
+                _P.chatLog.Add("YOUR GAME'S INTERNET ADDRESS IS " + address, ChatMessageType.SayAll);
+            }
+            _P.PlaySound(InfiniminerSound.ClickHigh);
         }
 
         void Go(Type state)

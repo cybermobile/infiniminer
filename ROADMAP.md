@@ -82,6 +82,7 @@ The original server trusted almost everything the client said.
       driven by a scripted controller, with a screenshot of every step; `--connect <address>` and trace output
 - [x] Computer players (`bots` setting and command, COMPUTER PLAYERS in HOST GAME): miners that dig, tunnel for
       treasure and bank it, keep teams even and make room for people
-- [ ] Internet play for hosted games (UPnP port mapping)
+- [x] Internet play: hosted games and dedicated servers can ask the router to forward their port (UPnP), show
+      the address to give out, and say plainly when the router won't
 - [ ] Quick chat with a controller
 - [ ] Polish: keep team and class after rejoining, softer clouds, team screen artwork

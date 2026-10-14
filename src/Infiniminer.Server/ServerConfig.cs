@@ -18,7 +18,8 @@ namespace Infiniminer
         public int MapSize = GameConstants.MapSize;  // 64 (original), 96 or 128
         public int DebugLatency = 0;        // milliseconds of simulated latency, for testing
         public string AdminPassword = "";
-        public int Bots = 0;                // computer players (they make way for people when the server is full)   // lets players run console commands from chat after /login
+        public int Bots = 0;
+        public bool Upnp = false;           // ask the router to forward the port (UPnP), for players on the internet                // computer players (they make way for people when the server is full)   // lets players run console commands from chat after /login
 
         // The original public server list (apps.keithholman.net) no longer exists, so listing is opt-in
         // through this setting. The endpoint receives the same form POST the original server sent.
@@ -44,6 +45,7 @@ namespace Infiniminer
             config.DebugLatency = Math.Max(0, dataFile.GetInt("debuglatency", config.DebugLatency));
             config.AdminPassword = dataFile.GetString("adminpassword", config.AdminPassword);
             config.Bots = Math.Clamp(dataFile.GetInt("bots", config.Bots), 0, 16);
+            config.Upnp = dataFile.GetBool("upnp", config.Upnp);
             int mapSize = dataFile.GetInt("mapsize", config.MapSize);
             config.MapSize = GameConstants.MapSizes.Contains(mapSize) ? mapSize : GameConstants.MapSize;
             config.ServerListUrl = dataFile.GetString("serverlist", config.ServerListUrl);

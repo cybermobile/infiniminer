@@ -674,6 +674,13 @@ namespace Infiniminer
                 return false;
             }
             ConsoleWrite("LISTENING ON PORT " + netServer.LocalPort);
+            if (config.Upnp)
+            {
+                // In the background: routers can take a few seconds to answer.
+                PortForward = new InternetPortForward(netServer.LocalPort, "Infiniminer " + TextUtil.Sanitize(config.ServerName));
+                PortForward.Log = line => Log(line);
+                PortForward.Start();
+            }
 
             // Calculate initial lava flows.
             ConsoleWrite("CALCULATING INITIAL LAVA FLOWS");
@@ -768,8 +775,13 @@ namespace Infiniminer
             return true;
         }
 
+        // The router port forward asked for with "upnp", if any.
+        public InternetPortForward PortForward { get; private set; }
+
         public void Shutdown(string reason)
         {
+            PortForward?.Stop();
+            PortForward = null;
             if (netServer == null || !netServer.IsRunning)
                 return;
             byte[] reasonData = NetExtensions.StringPayload(reason).CopyData();
