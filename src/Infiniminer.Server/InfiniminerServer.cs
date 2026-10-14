@@ -308,7 +308,7 @@ namespace Infiniminer
                         ConsoleWrite(" ban <ip or name>");
                         ConsoleWrite(" unban <ip>");
                         ConsoleWrite(" say <message>");
-                        ConsoleWrite(" bots <count>");
+                        ConsoleWrite(" bots [count]");
                         ConsoleWrite(" tp <player name> <x> <y> <z>");
                         ConsoleWrite(" save <mapfile>");
                         ConsoleWrite(" load <mapfile>");
@@ -381,8 +381,14 @@ namespace Infiniminer
                     {
                         if (args.Length == 2 && int.TryParse(args[1], out int botCount) && botCount >= 0 && botCount <= 16)
                             SetBotCount(botCount);
+                        else if (args.Length == 1)
+                        {
+                            ConsoleWrite(bots.Count + " BOTS (\"bots <count>\" to change)");
+                            foreach (ServerBot bot in bots)
+                                ConsoleWrite(bot.Player.Handle + " (" + bot.Player.Class + ", " + bot.Player.Team + "): " + bot.Describe());
+                        }
                         else
-                            ConsoleWrite("bots <count from 0 to 16>; there are " + bots.Count + " now");
+                            ConsoleWrite("bots <count from 0 to 16>");
                     }
                     break;
 
@@ -1280,7 +1286,9 @@ namespace Infiniminer
             int red = playerList.Values.Count(p => p != player && p.Team == PlayerTeam.Red);
             int blue = playerList.Values.Count(p => p != player && p.Team == PlayerTeam.Blue);
             ChooseTeam(player, red <= blue ? PlayerTeam.Red : PlayerTeam.Blue);
-            ChooseClass(player, PlayerClass.Miner);
+            // A mix of classes: two bots are a miner and a prospector, four make one of each.
+            PlayerClass[] classes = { PlayerClass.Miner, PlayerClass.Prospector, PlayerClass.Engineer, PlayerClass.Sapper };
+            ChooseClass(player, classes[(bots.Count - 1) % classes.Length]);
             SendMatchInfo(null);
         }
 
@@ -1351,6 +1359,44 @@ namespace Infiniminer
         void IBotWorld.Respawn(ServerPlayer bot)
         {
             RespawnPlayer(bot);
+        }
+
+        bool IBotWorld.Build(ServerPlayer bot, int x, int y, int z, BlockType blockType)
+        {
+            return Array.IndexOf(GameRules.GetBlocks(bot.Class, bot.Team), blockType) >= 0 && PlaceBlock(bot, x, y, z, blockType);
+        }
+
+        void IBotWorld.Detonate(ServerPlayer bot)
+        {
+            if (bot.Class == PlayerClass.Sapper)
+                UseDetonator(bot);
+        }
+
+        bool IBotWorld.AtOwnBank(ServerPlayer bot)
+        {
+            return NearOwnBank(bot);
+        }
+
+        void IBotWorld.DepositOre(ServerPlayer bot)
+        {
+            if (NearOwnBank(bot))
+            {
+                DepositOre(bot);
+                SendResourceUpdate(bot);
+            }
+        }
+
+        // The team's bank nearest the surface (bots only look for banks they can walk to).
+        (int x, int y, int z)? IBotWorld.FindOwnBank(ServerPlayer bot)
+        {
+            BlockType ownBank = bot.Team == PlayerTeam.Red ? BlockType.BankRed : BlockType.BankBlue;
+            int surface = MAPSIZE - GameConstants.GroundLevel - 1;
+            for (int y = Math.Min(MAPSIZE - 2, surface + 12); y >= Math.Max(1, surface - 3); y--)
+                for (int x = 1; x < MAPSIZE - 1; x++)
+                    for (int z = 1; z < MAPSIZE - 1; z++)
+                        if (blockList[x, y, z] == ownBank)
+                            return (x, y, z);
+            return null;
         }
 
         void IBotWorld.Kill(ServerPlayer bot, string deathMessage)
@@ -1660,65 +1706,42 @@ namespace Infiniminer
 
         public void UseConstructionGun(ServerPlayer player, Vector3 playerPosition, Vector3 playerHeading, BlockType blockType)
         {
-            bool actionFailed = false;
-
-            // Only real construction blocks can be built (guards against modified clients).
-            if (!BlockInformation.IsBuildable(blockType))
-                actionFailed = true;
-
-            // If there's no surface within range, bail.
+            // If there's no surface within range, or it is lava, the gun misfires.
             Vector3 hitPoint = Vector3.Zero;
             Vector3 buildPoint = Vector3.Zero;
-            if (!RayCollision(playerPosition, playerHeading, 6, 25, ref hitPoint, ref buildPoint))
-                actionFailed = true;
+            bool hit = RayCollision(playerPosition, playerHeading, 6, 25, ref hitPoint, ref buildPoint) && BlockAtPoint(hitPoint) != BlockType.Lava;
+            bool built = hit && PlaceBlock(player, GameConstants.ToBlock(buildPoint.X), GameConstants.ToBlock(buildPoint.Y), GameConstants.ToBlock(buildPoint.Z), blockType);
 
-            // If the block is too expensive, bail.
+            // Fire the player's gun, or decharge it.
+            TriggerConstructionGunAnimation(player, built ? 0.5f : -0.2f);
+        }
+
+        // Builds a block for a player if the rules allow it: a buildable type they can afford, inside the map,
+        // in an empty space nobody is standing in. Returns whether it was built.
+        public bool PlaceBlock(ServerPlayer player, int x, int y, int z, BlockType blockType)
+        {
+            if (!BlockInformation.IsBuildable(blockType) || !InBounds(x, y, z) || blockList[x, y, z] != BlockType.None)
+                return false;
+
             uint blockCost = BlockInformation.GetCost(blockType);
             if (config.SandboxMode && blockCost <= player.OreMax)
                 blockCost = 0;
             if (blockCost > player.Ore)
-                actionFailed = true;
+                return false;
 
-            // If there's someone there currently, bail.
-            int x = GameConstants.ToBlock(buildPoint.X);
-            int y = GameConstants.ToBlock(buildPoint.Y);
-            int z = GameConstants.ToBlock(buildPoint.Z);
             foreach (ServerPlayer p in playerList.Values)
-            {
                 if (p.Alive && (int)p.Position.X == x && (int)p.Position.Z == z && ((int)p.Position.Y == y || (int)p.Position.Y - 1 == y))
-                    actionFailed = true;
-            }
+                    return false;
 
-            // If it's out of bounds, bail.
-            if (!InBounds(x, y, z))
-                actionFailed = true;
+            SetBlock(x, y, z, blockType, player.Team);
+            player.Ore -= blockCost;
+            SendResourceUpdate(player);
+            PlaySound(InfiniminerSound.ConstructionGun, player.Position);
 
-            // If it's lava, don't let them build off of lava.
-            if (BlockAtPoint(hitPoint) == BlockType.Lava)
-                actionFailed = true;
-
-            if (actionFailed)
-            {
-                // Decharge the player's gun.
-                TriggerConstructionGunAnimation(player, -0.2f);
-            }
-            else
-            {
-                // Fire the player's gun.
-                TriggerConstructionGunAnimation(player, 0.5f);
-
-                // Build the block.
-                SetBlock(x, y, z, blockType, player.Team);
-                player.Ore -= blockCost;
-                SendResourceUpdate(player);
-
-                // Play the sound.
-                PlaySound(InfiniminerSound.ConstructionGun, player.Position);
-
-                // If it's an explosive block, add it to our list.
-                if (blockType == BlockType.Explosive)
-                    player.ExplosiveList.Add(new Vector3(x, y, z));
-            }
+            // If it's an explosive block, add it to our list.
+            if (blockType == BlockType.Explosive)
+                player.ExplosiveList.Add(new Vector3(x, y, z));
+            return true;
         }
 
         public void UseDeconstructionGun(ServerPlayer player, Vector3 playerPosition, Vector3 playerHeading)

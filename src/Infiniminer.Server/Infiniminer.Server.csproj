@@ -4,6 +4,9 @@
     <AssemblyName>InfiniminerServer</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Infiniminer.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Infiniminer.Shared\Infiniminer.Shared.csproj" />
   </ItemGroup>
   <ItemGroup>

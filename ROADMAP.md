@@ -88,3 +88,9 @@ The original server trusted almost everything the client said.
 - [x] Polish: rejoining after a restart keeps your team and class; clouds as bright as the original shader made
       them (the port had them at full white, which the bloom blew out); the team screen no longer shows the
       server list's heading and buttons from the original artwork
+
+## 11. Bots and the Steam Deck
+- [x] Bots of every class: prospectors sense treasure further away; engineers gather ore, climb out on ladders,
+      build the team a bank and stock it; sappers blast through rock from a safe distance
+- [x] Smarter bots: flee lava, take diamonds home straight away, find another way up when climbing stalls
+- [ ] Steam Deck: an on-screen keyboard for controller text entry, Deck defaults, setup notes

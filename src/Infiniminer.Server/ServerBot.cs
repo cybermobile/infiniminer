@@ -8,40 +8,88 @@ namespace Infiniminer
         int MapSize { get; }
         BlockType BlockAt(int x, int y, int z);         // outside the map counts as indestructible
         void Dig(ServerPlayer bot, int x, int y, int z);
+        bool Build(ServerPlayer bot, int x, int y, int z, BlockType blockType);    // the construction gun's rules
+        void Detonate(ServerPlayer bot);                // sets off the bot's explosives
+        bool AtOwnBank(ServerPlayer bot);
+        void DepositOre(ServerPlayer bot);              // 50 ore into the team's bank, as the deposit key does
+        (int x, int y, int z)? FindOwnBank(ServerPlayer bot);
         void Moved(ServerPlayer bot);                   // tell everyone where the bot is
         void Respawn(ServerPlayer bot);
         void Kill(ServerPlayer bot, string deathMessage);
     }
 
-    // A computer player: a miner that digs down, tunnels for gold and diamonds, and climbs back to the surface
-    // (where the server banks its loot, as it does for everyone). It moves one block at a time, digging what is
-    // in the way, and keeps away from lava.
+    // A computer player. Every class digs down, tunnels and climbs back to the surface, where the server banks
+    // its loot as it does for everyone; what it looks for and how it gets around depends on its class:
+    //   Miner       gold and diamonds, close by
+    //   Prospector  gold and diamonds, sensed from further away (the radar)
+    //   Engineer    ore for the team: climbs out on ladders it builds, builds the team a bank if it has none,
+    //               and deposits its ore there
+    //   Sapper      blasts through rock that a pickaxe can't dig
+    // It moves one block at a time, digging what is in the way, keeps away from lava (and flees lava that flows
+    // towards it), and heads home early when carrying diamonds.
     public sealed class ServerBot
     {
         public const float RespawnDelay = 3;
         const float FallSpeed = 12;     // blocks per second
         const int LethalFall = 15;      // blocks, as for players (GameRules' 15.5 m)
         const float StuckLimit = 30;    // seconds without progress before giving up and respawning
+        const float BankTripLimit = 60; // seconds to spend walking to the bank before giving up on it
+        const int BlastDistance = 4;    // explosions kill within 3 blocks
 
         public readonly ServerPlayer Player;
         readonly IBotWorld world;
         readonly Random random;
 
-        enum Plan { Wander, Descend, Tunnel, Ascend }
+        enum Plan { Wander, Descend, Tunnel, Ascend, ToBank, Blast }
         Plan plan = Plan.Wander;
         int x, fy, z;                   // the block the bot's feet are in
         int dirX = 1, dirZ = 0;
         int stepsLeft, targetDepth, tunnelsLeft;
-        float digCooldown, deadTime, sendTimer, toolTimer, stuckTime;
+        float digCooldown, deadTime, sendTimer, toolTimer, stuckTime, planTime, actionCooldown;
         bool moving, falling;
         Vector3 moveFrom, moveTo;
         float moveProgress, moveDuration;
         int fallStartY;
+        (int x, int y, int z)? pendingLadder;   // engineers climbing: the ladder goes under their feet
+        int blastStage, retreatLeft;
+        int ascendBestY, relocateSteps;     // climbing: highest point so far, and steps left to walk elsewhere
+        float ascendStall;
 
         // For tests and the console.
         public int BlocksDug { get; private set; }
         public int TripsHome { get; private set; }
         public int DeepestY { get; private set; } = int.MaxValue;
+        public int LaddersBuilt { get; private set; }
+        public int BanksBuilt { get; private set; }
+        public int Blasts { get; private set; }
+        public uint OreDeposited { get; private set; }
+        public int LavaEscapes { get; private set; }
+
+        // Tests: start tunnelling in a direction from where the bot stands.
+        internal void StartTunnel(int dx, int dz)
+        {
+            SyncFromPosition();
+            SetPlan(Plan.Tunnel);
+            (dirX, dirZ) = (dx, dz);
+            stepsLeft = 20;
+            tunnelsLeft = 0;
+        }
+
+        internal bool Ascending
+        {
+            get { return plan == Plan.Ascend; }
+        }
+
+        internal void HeadForBank()
+        {
+            SyncFromPosition();
+            SetPlan(Plan.ToBank);
+        }
+
+        public string Describe()
+        {
+            return $"{plan} at ({x},{fy},{z}) ore {Player.Ore} weight {Player.Weight} cash {Player.Cash} alive {Player.Alive} stuck {stuckTime:0.0}";
+        }
 
         public ServerBot(ServerPlayer player, IBotWorld world, int seed)
         {
@@ -51,10 +99,26 @@ namespace Infiniminer
             player.Tool = PlayerTools.Pickaxe;
         }
 
+        PlayerClass Class
+        {
+            get { return Player.Class; }
+        }
+
         int SurfaceFeetY
         {
             // Above this the server counts the bot as on the surface (and banks its loot).
             get { return world.MapSize - GameConstants.GroundLevel - 1; }
+        }
+
+        // How far a bot notices what it is after: a prospector's radar reaches further than anyone's eyes.
+        int SenseRange
+        {
+            get { return Class == PlayerClass.Prospector ? 12 : 6; }
+        }
+
+        BlockType OwnBank
+        {
+            get { return Player.Team == PlayerTeam.Red ? BlockType.BankRed : BlockType.BankBlue; }
         }
 
         bool Solid(int bx, int by, int bz)
@@ -70,18 +134,27 @@ namespace Infiniminer
                 || world.BlockAt(bx, by, bz + 1) == BlockType.Lava || world.BlockAt(bx, by, bz - 1) == BlockType.Lava;
         }
 
+        bool InsideMap(int bx, int by, int bz)
+        {
+            int edge = world.MapSize - 1;
+            return bx > 0 && by > 0 && bz > 0 && bx < edge && by < edge && bz < edge;
+        }
+
         // Diggable with a pickaxe, inside the map, and not about to let lava in.
         bool Diggable(int bx, int by, int bz)
         {
-            int edge = world.MapSize - 1;
-            return bx > 0 && by > 0 && bz > 0 && bx < edge && by < edge && bz < edge
-                && GameRules.Dig(world.BlockAt(bx, by, bz), false).Removes && !NearLava(bx, by, bz);
+            return InsideMap(bx, by, bz) && GameRules.Dig(world.BlockAt(bx, by, bz), false).Removes && !NearLava(bx, by, bz);
         }
 
-        bool Treasure(int bx, int by, int bz)
+        // What this bot is looking for.
+        bool Wanted(int bx, int by, int bz)
         {
             BlockType block = world.BlockAt(bx, by, bz);
-            return block == BlockType.Gold || block == BlockType.Diamond;
+            bool treasure = (block == BlockType.Gold || block == BlockType.Diamond) && Player.Weight < Player.WeightMax;
+            // Engineers gather ore for the team; sappers need it for explosives.
+            if (Class == PlayerClass.Engineer || (Class == PlayerClass.Sapper && Player.Ore < 2 * BlockInformation.GetCost(BlockType.Explosive)))
+                return treasure || (block == BlockType.Ore && Player.Ore < Player.OreMax);
+            return treasure;
         }
 
         bool InsideMargin(int bx, int bz)
@@ -96,6 +169,7 @@ namespace Infiniminer
             fy = (int)MathF.Floor(Player.Position.Y + GameRules.FootOffset + 0.05f);
             moving = false;
             falling = false;
+            pendingLadder = null;
         }
 
         Vector3 CellPosition(int cx, int cy, int cz)
@@ -103,25 +177,24 @@ namespace Infiniminer
             return new Vector3(cx + 0.5f, cy - GameRules.FootOffset - 0.05f, cz + 0.5f);
         }
 
+        static readonly (int dx, int dz)[] Directions = { (1, 0), (-1, 0), (0, 1), (0, -1) };
+
         void TurnRandomly()
         {
-            int[][] directions = { new[] { 1, 0 }, new[] { -1, 0 }, new[] { 0, 1 }, new[] { 0, -1 } };
-            int[] chosen = directions[random.Next(4)];
-            dirX = chosen[0];
-            dirZ = chosen[1];
+            (dirX, dirZ) = Directions[random.Next(4)];
         }
 
-        // Heads for gold or diamonds within a few blocks (the glint a player would notice), otherwise anywhere.
+        // Heads for what it is looking for within sensing range, otherwise anywhere.
         void ChooseDirection()
         {
             int best = int.MaxValue;
-            foreach (var (dx, dz) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
-                for (int distance = 1; distance <= 6 && distance < best; distance++)
+            foreach (var (dx, dz) in Directions)
+                for (int distance = 1; distance <= SenseRange && distance < best; distance++)
                 {
                     int cx = x + dx * distance, cz = z + dz * distance;
                     if (!InsideMargin(cx, cz))
                         break;
-                    if (Treasure(cx, fy, cz) || Treasure(cx, fy + 1, cz) || Treasure(cx, fy - 1, cz))
+                    if (Wanted(cx, fy, cz) || Wanted(cx, fy + 1, cz) || Wanted(cx, fy - 1, cz))
                     {
                         best = distance;
                         dirX = dx;
@@ -148,21 +221,33 @@ namespace Infiniminer
             stuckTime = 0;
         }
 
+        void Aim(int bx, int by, int bz)
+        {
+            Vector3 target = new Vector3(bx + 0.5f, by + 0.5f, bz + 0.5f);
+            if (target != Player.Position)
+                Player.Heading = Vector3.Normalize(target - Player.Position);
+        }
+
         // One swing of the pickaxe, when it is ready. Returns true if the bot spent its turn digging.
         bool TryDig(int bx, int by, int bz)
         {
             if (digCooldown > 0)
                 return true;
-            Vector3 eye = Player.Position;
-            Vector3 target = new Vector3(bx + 0.5f, by + 0.5f, bz + 0.5f);
-            if (target != eye)
-                Player.Heading = Vector3.Normalize(target - eye);
+            Player.Tool = PlayerTools.Pickaxe;
+            Aim(bx, by, bz);
             world.Dig(Player, bx, by, bz);
             BlocksDug++;
-            digCooldown = GameRules.GetToolCooldown(PlayerTools.Pickaxe, Player.Class) + 0.05f;
+            digCooldown = GameRules.GetToolCooldown(PlayerTools.Pickaxe, Class) + 0.05f;
             Player.UsingTool = true;
             toolTimer = 0.3f;
             return true;
+        }
+
+        bool TryBuild(int bx, int by, int bz, BlockType blockType)
+        {
+            Player.Tool = PlayerTools.ConstructionGun;
+            Aim(bx, by, bz);
+            return world.Build(Player, bx, by, bz, blockType);
         }
 
         public void Update(float elapsed)
@@ -175,7 +260,7 @@ namespace Infiniminer
                     deadTime = 0;
                     world.Respawn(Player);
                     SyncFromPosition();
-                    plan = Plan.Wander;
+                    SetPlan(Plan.Wander);
                     stepsLeft = 3 + random.Next(6);
                     TurnRandomly();
                     world.Moved(Player);
@@ -188,7 +273,9 @@ namespace Infiniminer
                 SyncFromPosition();
 
             digCooldown -= elapsed;
+            actionCooldown -= elapsed;
             sendTimer -= elapsed;
+            planTime += elapsed;
             if (toolTimer > 0)
             {
                 toolTimer -= elapsed;
@@ -204,6 +291,13 @@ namespace Infiniminer
                 {
                     moving = false;
                     Player.Position = moveTo;
+                    // An engineer that just climbed puts a ladder where its feet were.
+                    if (pendingLadder is (int lx, int ly, int lz))
+                    {
+                        pendingLadder = null;
+                        if (TryBuild(lx, ly, lz, BlockType.Ladder))
+                            LaddersBuilt++;
+                    }
                 }
             }
             else
@@ -217,6 +311,24 @@ namespace Infiniminer
                 world.Moved(Player);
                 sendTimer = 0.05f;
             }
+        }
+
+        void SetPlan(Plan newPlan)
+        {
+            plan = newPlan;
+            planTime = 0;
+            ascendBestY = fy;
+            ascendStall = 0;
+            relocateSteps = 0;
+        }
+
+        // Turns towards the middle of the map, along whichever axis is further off.
+        void FaceCentre()
+        {
+            int centre = world.MapSize / 2, dx = centre - x, dz = centre - z;
+            (dirX, dirZ) = Math.Abs(dx) >= Math.Abs(dz) ? (Math.Sign(dx), 0) : (0, Math.Sign(dz));
+            if (dirX == 0 && dirZ == 0)
+                TurnRandomly();
         }
 
         void Think(float elapsed)
@@ -249,12 +361,23 @@ namespace Infiniminer
                 return;
             }
 
-            // Gold and diamonds right next to us are always worth a swing.
-            if (Player.Weight < Player.WeightMax)
+            // Lava has flowed up to us: get away from it, and head for the surface.
+            if (plan != Plan.Blast && (NearLava(x, fy, z) || NearLava(x, fy + 1, z)) && FleeLava())
+                return;
+
+            // Diamonds are worth too much to risk: take them home straight away.
+            if ((plan == Plan.Tunnel || plan == Plan.Descend) && Player.Cash >= 1000)
+            {
+                SetPlan(Plan.Ascend);
+                return;
+            }
+
+            // Anything wanted right next to us is always worth a swing.
+            if (plan != Plan.Blast)
                 foreach (var (tx, ty, tz) in new[] { (x + 1, fy, z), (x - 1, fy, z), (x, fy, z + 1), (x, fy, z - 1),
                                                      (x + 1, fy + 1, z), (x - 1, fy + 1, z), (x, fy + 1, z + 1), (x, fy + 1, z - 1),
                                                      (x, fy + 2, z), (x, fy - 1, z) })
-                    if (Treasure(tx, ty, tz) && Diggable(tx, ty, tz))
+                    if (Wanted(tx, ty, tz) && Diggable(tx, ty, tz))
                     {
                         TryDig(tx, ty, tz);
                         return;
@@ -265,7 +388,7 @@ namespace Infiniminer
                 case Plan.Wander:
                     if (stepsLeft <= 0 || fy < SurfaceFeetY)
                     {
-                        plan = Plan.Descend;
+                        SetPlan(Plan.Descend);
                         targetDepth = Math.Max(3, SurfaceFeetY - 6 - random.Next(20));
                         return;
                     }
@@ -276,7 +399,7 @@ namespace Infiniminer
                 case Plan.Descend:
                     if (fy <= targetDepth || !Diggable(x, fy - 1, z))
                     {
-                        plan = Plan.Tunnel;
+                        SetPlan(Plan.Tunnel);
                         stepsLeft = 10 + random.Next(20);
                         tunnelsLeft = 3;
                         ChooseDirection();
@@ -286,10 +409,12 @@ namespace Infiniminer
                     return;
 
                 case Plan.Tunnel:
-                    // Home when full, or after a few tunnels; an empty-handed miner tries another direction first.
-                    if (Player.Weight >= Player.WeightMax || (stepsLeft <= 0 && (Player.Weight > 0 || tunnelsLeft <= 0)))
+                    // Home when full, or after a few tunnels; an empty-handed bot tries another direction first.
+                    bool full = Player.Weight >= Player.WeightMax || (Class == PlayerClass.Engineer && Player.Ore >= Player.OreMax);
+                    bool carrying = Player.Weight > 0 || (Class == PlayerClass.Engineer && Player.Ore >= 100);
+                    if (full || (stepsLeft <= 0 && (carrying || tunnelsLeft <= 0)))
                     {
-                        plan = Plan.Ascend;
+                        SetPlan(Plan.Ascend);
                         return;
                     }
                     if (stepsLeft <= 0)
@@ -299,23 +424,99 @@ namespace Infiniminer
                         ChooseDirection();
                     }
                     if (!Step(climb: false, dig: true))
+                    {
+                        if (Class == PlayerClass.Sapper && TryStartBlast())
+                            return;
                         ChooseDirection();
+                    }
                     return;
 
                 case Plan.Ascend:
                     if (fy >= SurfaceFeetY)
                     {
-                        // On the surface: the server banks the loot. Head off somewhere new.
+                        // On the surface: the server banks the loot.
                         TripsHome++;
-                        plan = Plan.Wander;
-                        stepsLeft = 3 + random.Next(8);
-                        TurnRandomly();
+                        if (Class == PlayerClass.Engineer && Player.Ore >= 50)
+                            SetPlan(Plan.ToBank);
+                        else
+                        {
+                            SetPlan(Plan.Wander);
+                            stepsLeft = 3 + random.Next(8);
+                            TurnRandomly();
+                        }
                         return;
                     }
+                    // No higher for a while (under rock, or against the edge of the map): walk somewhere else and try
+                    // again from there; give up eventually.
+                    if (fy > ascendBestY)
+                    {
+                        ascendBestY = fy;
+                        ascendStall = 0;
+                    }
+                    else
+                        ascendStall += elapsed;
+                    if (ascendStall > 45)
+                    {
+                        world.Kill(Player, "HAS COMMMITTED PIXELCIDE!");
+                        return;
+                    }
+                    if (ascendStall > 15 && relocateSteps == 0)
+                    {
+                        relocateSteps = 6;
+                        ascendStall = 0;
+                        FaceCentre();
+                    }
+                    if (relocateSteps > 0)
+                    {
+                        if (!Step(climb: true, dig: true))
+                        {
+                            relocateSteps = 0;
+                            TurnRandomly();
+                        }
+                        else if (moving)
+                            relocateSteps--;
+                        return;
+                    }
+
+                    // Engineers climb straight up on ladders while they have ore to spare (keeping 100 for the bank);
+                    // everyone else cuts stairs.
+                    if (Class == PlayerClass.Engineer && Player.Ore >= 100 + BlockInformation.GetCost(BlockType.Ladder) && ClimbLadder())
+                        return;
                     if (!Climb())
                         TurnRandomly();
                     return;
+
+                case Plan.ToBank:
+                    GoToBank();
+                    return;
+
+                case Plan.Blast:
+                    ContinueBlast();
+                    return;
             }
+        }
+
+        // Moves to a neighbouring block away from lava (or up, if that's clear). Returns false if trapped.
+        bool FleeLava()
+        {
+            foreach (var (dx, dz) in Directions.OrderBy(_ => random.Next()))
+            {
+                int nx = x + dx, nz = z + dz;
+                if (InsideMargin(nx, nz) && !Solid(nx, fy, nz) && !Solid(nx, fy + 1, nz) && !NearLava(nx, fy, nz) && !NearLava(nx, fy + 1, nz))
+                {
+                    LavaEscapes++;
+                    SetPlan(Plan.Ascend);
+                    (dirX, dirZ) = (dx, dz);
+                    StartMove(nx, fy, nz, GameRules.MoveSpeed);
+                    return true;
+                }
+            }
+            if (plan != Plan.Ascend)
+            {
+                LavaEscapes++;
+                SetPlan(Plan.Ascend);
+            }
+            return false;
         }
 
         // Moves one block in the current direction, digging through what's in the way when `dig` is set, and
@@ -359,28 +560,177 @@ namespace Infiniminer
             return false;
         }
 
-        // Cuts a staircase up: clears headroom above us and the two blocks above the next step, then steps up.
+        // Cuts a staircase up: clears headroom above us and the two blocks above the next step, then steps up. Any side
+        // with something to step onto will do (the current direction first); on open cave floor, walks on until
+        // there's a wall to cut steps into.
         bool Climb()
         {
-            int nx = x + dirX, nz = z + dirZ;
-            if (!InsideMargin(nx, nz))
-                return false;
+            foreach (var (dx, dz) in new[] { (dirX, dirZ) }.Concat(Directions.Where(d => d != (dirX, dirZ))))
+            {
+                int nx = x + dx, nz = z + dz;
+                if (!InsideMargin(nx, nz) || !Solid(nx, fy, nz) || NearLava(nx, fy + 1, nz) || NearLava(nx, fy + 2, nz))
+                    continue;
+                (int, int, int)? toDig = null;
+                bool possible = true;
+                foreach (var (bx, by, bz) in new[] { (x, fy + 2, z), (nx, fy + 2, nz), (nx, fy + 1, nz) })
+                    if (Solid(bx, by, bz))
+                    {
+                        if (!Diggable(bx, by, bz))
+                        {
+                            possible = false;
+                            break;
+                        }
+                        toDig ??= (bx, by, bz);
+                    }
+                if (!possible)
+                    continue;
+                (dirX, dirZ) = (dx, dz);
+                if (toDig is (int tx, int ty, int tz))
+                    return TryDig(tx, ty, tz);
+                StartMove(nx, fy + 1, nz, GameRules.MoveSpeed);
+                return true;
+            }
+            return Step(climb: false, dig: true);
+        }
 
-            // The next step needs something to stand on; over a gap, walk across at this level instead.
-            if (!Solid(nx, fy, nz))
-                return Step(climb: false, dig: true);
-
-            foreach (var (bx, by, bz) in new[] { (x, fy + 2, z), (nx, fy + 2, nz), (nx, fy + 1, nz) })
-                if (Solid(bx, by, bz))
-                {
-                    if (!Diggable(bx, by, bz))
-                        return false;
-                    return TryDig(bx, by, bz);
-                }
-            if (NearLava(nx, fy + 1, nz) || NearLava(nx, fy + 2, nz))
-                return false;
-            StartMove(nx, fy + 1, nz, GameRules.MoveSpeed);
+        // Climbs straight up a shaft by building a ladder under its feet (as players pillar up), leaving a ladder
+        // anyone can use. Returns false if the shaft can't go higher here.
+        bool ClimbLadder()
+        {
+            if (Solid(x, fy + 2, z))
+            {
+                if (!Diggable(x, fy + 2, z))
+                    return false;
+                return TryDig(x, fy + 2, z);
+            }
+            if (NearLava(x, fy + 2, z) || actionCooldown > 0)
+                return actionCooldown > 0;
+            actionCooldown = GameRules.GetToolCooldown(PlayerTools.ConstructionGun, Class);
+            pendingLadder = (x, fy, z);
+            StartMove(x, fy + 1, z, GameRules.MoveSpeed);
             return true;
+        }
+
+        // Engineers on the surface: build the team a bank if it has none, otherwise walk to it and deposit ore.
+        void GoToBank()
+        {
+            if (Player.Ore < 50 || planTime > BankTripLimit)
+            {
+                SetPlan(Plan.Wander);
+                stepsLeft = 3 + random.Next(8);
+                return;
+            }
+            if (world.AtOwnBank(Player))
+            {
+                if (actionCooldown <= 0)
+                {
+                    uint before = Player.Ore;
+                    world.DepositOre(Player);
+                    OreDeposited += before - Player.Ore;
+                    actionCooldown = 0.5f;
+                }
+                return;
+            }
+
+            (int x, int y, int z)? bank = world.FindOwnBank(Player);
+            if (bank == null)
+            {
+                // No bank yet: build one next to us, on solid ground.
+                uint cost = BlockInformation.GetCost(OwnBank);
+                if (Player.Ore < cost)
+                {
+                    SetPlan(Plan.Wander);
+                    stepsLeft = 3 + random.Next(8);
+                    return;
+                }
+                foreach (var (dx, dz) in Directions)
+                    if (!Solid(x + dx, fy, z + dz) && Solid(x + dx, fy - 1, z + dz) && TryBuild(x + dx, fy, z + dz, OwnBank))
+                    {
+                        BanksBuilt++;
+                        return;
+                    }
+                // Nowhere to put it here: walk on a little.
+                if (!Step(climb: true, dig: false))
+                    TurnRandomly();
+                return;
+            }
+
+            // Walk towards the bank, climbing or digging as needed.
+            int ddx = bank.Value.x - x, ddz = bank.Value.z - z;
+            (int, int) preferred = Math.Abs(ddx) >= Math.Abs(ddz) ? (Math.Sign(ddx), 0) : (0, Math.Sign(ddz));
+            (int, int) other = Math.Abs(ddx) >= Math.Abs(ddz) ? (0, Math.Sign(ddz)) : (Math.Sign(ddx), 0);
+            foreach (var (dx, dz) in new[] { preferred, other })
+            {
+                if (dx == 0 && dz == 0)
+                    continue;
+                (dirX, dirZ) = (dx, dz);
+                if (Step(climb: true, dig: true))
+                    return;
+            }
+            TurnRandomly();
+            Step(climb: true, dig: true);
+        }
+
+        // Sappers facing rock: back off a block, put an explosive where they stood, retreat out of range and set it
+        // off. Needs a straight, open tunnel behind to retreat along. Returns false if it can't be done here.
+        bool TryStartBlast()
+        {
+            int nx = x + dirX, nz = z + dirZ;
+            if (world.BlockAt(nx, fy, nz) != BlockType.Rock && world.BlockAt(nx, fy + 1, nz) != BlockType.Rock)
+                return false;
+            if (Player.Ore < BlockInformation.GetCost(BlockType.Explosive))
+                return false;
+            for (int back = 1; back <= BlastDistance + 1; back++)
+            {
+                int bx = x - dirX * back, bz = z - dirZ * back;
+                if (!InsideMargin(bx, bz) || Solid(bx, fy, bz) || Solid(bx, fy + 1, bz) || !Solid(bx, fy - 1, bz))
+                    return false;
+            }
+            SetPlan(Plan.Blast);
+            blastStage = 0;
+            return true;
+        }
+
+        void ContinueBlast()
+        {
+            int backX = -dirX, backZ = -dirZ;
+            switch (blastStage)
+            {
+                case 0:
+                    // Step back; the explosive goes where we were standing, against the rock.
+                    blastStage = 1;
+                    StartMove(x + backX, fy, z + backZ, GameRules.MoveSpeed);
+                    return;
+                case 1:
+                    if (!TryBuild(x - backX, fy, z - backZ, BlockType.Explosive))
+                    {
+                        SetPlan(Plan.Tunnel);
+                        ChooseDirection();
+                        return;
+                    }
+                    blastStage = 2;
+                    retreatLeft = BlastDistance - 1;
+                    return;
+                case 2:
+                    if (retreatLeft-- > 0)
+                    {
+                        StartMove(x + backX, fy, z + backZ, GameRules.MoveSpeed);
+                        return;
+                    }
+                    Player.Tool = PlayerTools.Detonator;
+                    world.Detonate(Player);
+                    Blasts++;
+                    blastStage = 3;
+                    actionCooldown = 0.5f;
+                    return;
+                default:
+                    if (actionCooldown > 0)
+                        return;
+                    // Back to the blasted rock face.
+                    SetPlan(Plan.Tunnel);
+                    stepsLeft = Math.Max(stepsLeft, 8);
+                    return;
+            }
         }
     }
 }

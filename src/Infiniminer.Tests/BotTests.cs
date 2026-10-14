@@ -33,22 +33,26 @@ namespace Infiniminer.Tests
             {
                 Assert.Equal(4, server.Bots.Count);
                 Assert.Equal(2, server.Bots.Count(b => b.Player.Team == PlayerTeam.Red));
-                Assert.All(server.Bots, b => Assert.Equal(PlayerClass.Miner, b.Player.Class));
+                Assert.Equal(new[] { PlayerClass.Miner, PlayerClass.Prospector, PlayerClass.Engineer, PlayerClass.Sapper },
+                    server.Bots.Select(b => b.Player.Class));
 
-                // Five minutes of play, simulated.
+                // Eight minutes of play, simulated.
                 int surface = GameConstants.MapSize - GameConstants.GroundLevel - 1;
-                for (int step = 0; step < 5 * 60 * 20; step++)
+                for (int step = 0; step < 8 * 60 * 20; step++)
                 {
                     server.UpdateBots(0.05f);
                     server.DepositForPlayers();
                 }
 
                 foreach (ServerBot bot in server.Bots)
-                    output.WriteLine($"{bot.Player.Handle}: dug {bot.BlocksDug}, deepest {surface - bot.DeepestY} below the surface, {bot.TripsHome} trips home, score {bot.Player.Score}");
+                    output.WriteLine($"{bot.Player.Handle} ({bot.Player.Class}): dug {bot.BlocksDug}, deepest {surface - bot.DeepestY} below, "
+                        + $"{bot.TripsHome} trips home, score {bot.Player.Score}, ladders {bot.LaddersBuilt}, banks {bot.BanksBuilt}, "
+                        + $"ore deposited {bot.OreDeposited}, blasts {bot.Blasts}, lava escapes {bot.LavaEscapes}");
                 Assert.All(server.Bots, b => Assert.True(b.BlocksDug > 30, b.Player.Handle + " barely dug"));
                 Assert.All(server.Bots, b => Assert.True(b.DeepestY < surface - 4, b.Player.Handle + " stayed near the surface"));
                 Assert.True(server.Bots.Sum(b => b.TripsHome) >= 4, "bots should come back up to bank their loot");
                 Assert.True(server.Bots.Sum(b => (long)b.Player.Score) > 0, "some loot should have been banked");
+                // (What each class does is checked on small worlds in BotBehaviourTests; play here varies run to run.)
             }
             finally
             {
