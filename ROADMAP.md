@@ -100,3 +100,5 @@ The original server trusted almost everything the client said.
 ## 12. More to play with
 - [x] Bot difficulty: easy, normal or hard (`botskill`, the console command, COMPUTER SKILL in HOST GAME)
 - [x] Keep the world between sessions until a match ends (`persist`, KEEP WORLD and CONTINUE GAME in HOST GAME)
+- [x] Faster rendering: faces pointing away from the camera aren't drawn (about half the draw calls and
+      triangles, identical picture); `seed` for repeatable worlds; frame rate and draw counts in the trace output

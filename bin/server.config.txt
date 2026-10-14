@@ -63,3 +63,6 @@ upnp = false
 # Keep the world (and the match score and clock) in world.sav, so stopping and starting the server carries
 # on where it was. Saved every two minutes and on shutdown; a new world is made once a match ends.
 persist = false
+
+# 0 makes a different world every time; any other number always makes the same world for the same size.
+seed = 0

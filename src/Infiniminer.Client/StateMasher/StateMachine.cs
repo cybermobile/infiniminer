@@ -208,6 +208,8 @@ namespace StateMasher
             if (frameTimer >= 1)
             {
                 frameRate = framesThisSecond / frameTimer;
+                if (Infiniminer.GameTrace.Enabled && propertyBag?.blockEngine != null && currentState is Infiniminer.States.MainGameState)
+                    Infiniminer.GameTrace.Write($"PERF {frameRate:0.0} fps, {propertyBag.blockEngine.DrawCalls} draw calls, {propertyBag.blockEngine.Triangles} triangles");
                 framesThisSecond = 0;
                 frameTimer = 0;
             }

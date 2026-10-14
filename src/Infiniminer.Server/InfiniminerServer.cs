@@ -658,6 +658,8 @@ namespace Infiniminer
 
         void GenerateWorld()
         {
+            if (config.Seed != 0)
+                CaveGenerator.SetSeed(config.Seed);
             BlockType[, ,] worldData = CaveGenerator.GenerateCaveSystem(MAPSIZE, config.IncludeLava, config.OreFactor);
             blockList = new BlockType[MAPSIZE, MAPSIZE, MAPSIZE];
             blockCreatorTeam = new PlayerTeam[MAPSIZE, MAPSIZE, MAPSIZE];

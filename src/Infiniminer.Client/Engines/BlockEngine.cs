@@ -239,8 +239,14 @@ namespace Infiniminer
             return false;
         }
 
+        // Draw calls in the last frame (for the trace output's performance numbers).
+        public int DrawCalls { get; private set; }
+        public int Triangles { get; private set; }
+
         public void Render(GraphicsDevice graphicsDevice, GameTime gameTime)
         {
+            DrawCalls = 0;
+            Triangles = 0;
             RegenerateDirtyVertexLists();
 
             Camera camera = gameInstance.propertyBag.playerCamera;
@@ -274,10 +280,11 @@ namespace Infiniminer
                     if (!regionVisible[r] || vertexListDirty[(byte)blockTexture, r])
                         continue;
 
+                    Vector3 regionMin = GetRegionCenter(r) - new Vector3(REGIONSIZE / 2);
                     for (int faceDir = 0; faceDir < (int)BlockFaceDirection.MAXIMUM; faceDir++)
                     {
                         VertexBuffer regionBuffer = vertexBuffers[(byte)blockTexture, r, faceDir];
-                        if (regionBuffer == null)
+                        if (regionBuffer == null || !FacesVisibleFrom((BlockFaceDirection)faceDir, regionMin, REGIONSIZE, camera.Position))
                             continue;
 
                         // Lava is unshaded but brightened; shock block spikes glow.
@@ -295,6 +302,8 @@ namespace Infiniminer
                         basicEffect.CurrentTechnique.Passes[0].Apply();
                         graphicsDevice.SetVertexBuffer(regionBuffer);
                         graphicsDevice.DrawPrimitives(PrimitiveType.TriangleList, 0, regionBuffer.VertexCount / 3);
+                        DrawCalls++;
+                        Triangles += regionBuffer.VertexCount / 3;
                     }
                 }
             }
@@ -512,6 +521,22 @@ namespace Infiniminer
         private uint GetRegion(ushort x, ushort y, ushort z)
         {
             return (uint)(x / REGIONSIZE + (y / REGIONSIZE) * REGIONRATIO + (z / REGIONSIZE) * REGIONRATIO * REGIONRATIO);
+        }
+
+        // Whether any face of a region pointing this way can be seen from the camera. A face is visible only from
+        // in front of it: the +X faces of a region lie on the planes x0+1 .. x0+size, so a camera at x <= x0+1
+        // can't see any of them (and so on for the other directions). Faces that can't be seen aren't drawn.
+        public static bool FacesVisibleFrom(BlockFaceDirection direction, Vector3 regionMin, float regionSize, Vector3 camera)
+        {
+            switch (direction)
+            {
+                case BlockFaceDirection.XIncreasing: return camera.X > regionMin.X + 1;
+                case BlockFaceDirection.XDecreasing: return camera.X < regionMin.X + regionSize - 1;
+                case BlockFaceDirection.YIncreasing: return camera.Y > regionMin.Y + 1;
+                case BlockFaceDirection.YDecreasing: return camera.Y < regionMin.Y + regionSize - 1;
+                case BlockFaceDirection.ZIncreasing: return camera.Z > regionMin.Z + 1;
+                default: return camera.Z < regionMin.Z + regionSize - 1;
+            }
         }
 
         private Vector3 GetRegionCenter(uint regionNumber)

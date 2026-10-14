@@ -21,6 +21,7 @@ namespace Infiniminer
         public int Bots = 0;
         public BotSkill BotSkill = BotSkill.Normal;
         public bool Upnp = false;
+        public int Seed = 0;                // 0: a different world every time; otherwise the same world for the same seed
         public bool Persist = false;        // keep the world (and the match standing) in world.sav between runs
         public bool ArchiveMatches = true;  // write each finished match's map to autosave_<time>.lvl           // ask the router to forward the port (UPnP), for players on the internet                // computer players (they make way for people when the server is full)   // lets players run console commands from chat after /login
 
@@ -50,6 +51,7 @@ namespace Infiniminer
             config.Bots = Math.Clamp(dataFile.GetInt("bots", config.Bots), 0, 16);
             config.Upnp = dataFile.GetBool("upnp", config.Upnp);
             config.Persist = dataFile.GetBool("persist", config.Persist);
+            config.Seed = dataFile.GetInt("seed", config.Seed);
             if (Enum.TryParse(dataFile.GetString("botskill", ""), true, out BotSkill skill) && Enum.IsDefined(skill))
                 config.BotSkill = skill;
             int mapSize = dataFile.GetInt("mapsize", config.MapSize);

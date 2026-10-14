@@ -104,6 +104,28 @@ namespace Infiniminer.Tests
         }
 
         [Fact]
+        public void FacesPointingAwayFromTheCameraAreSkipped()
+        {
+            // A region from (16,16,16) to (32,32,32).
+            Vector3 min = new Vector3(16);
+            bool Visible(BlockFaceDirection direction, float x, float y, float z) => BlockEngine.FacesVisibleFrom(direction, min, 16, new Vector3(x, y, z));
+
+            // West of it, only its west-facing (-X) sides can be seen; east of it, only the east-facing ones.
+            Assert.False(Visible(BlockFaceDirection.XIncreasing, 10, 20, 20));
+            Assert.True(Visible(BlockFaceDirection.XDecreasing, 10, 20, 20));
+            Assert.True(Visible(BlockFaceDirection.XIncreasing, 40, 20, 20));
+            Assert.False(Visible(BlockFaceDirection.XDecreasing, 40, 20, 20));
+
+            // Inside it, every direction may be visible.
+            foreach (BlockFaceDirection direction in Enum.GetValues<BlockFaceDirection>().Where(d => d != BlockFaceDirection.MAXIMUM))
+                Assert.True(Visible(direction, 24, 24, 24), direction.ToString());
+
+            // Above it, the tops (+Y) but not the undersides.
+            Assert.True(Visible(BlockFaceDirection.YIncreasing, 20, 50, 20));
+            Assert.False(Visible(BlockFaceDirection.YDecreasing, 20, 50, 20));
+        }
+
+        [Fact]
         public void EveryGameStateCanBeCreatedByTheStateMachine()
         {
             Type[] states = typeof(InfiniminerGame).Assembly.GetTypes()
