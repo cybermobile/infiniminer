@@ -54,8 +54,8 @@ redistributed here (http://www.dsg4.com/04/extra/bitmap/). The game ships with t
 Silkscreen font (SIL Open Font License). To use the originals, put 04B_08__.TTF and 04B_03B_.TTF in
 src/Infiniminer.Client/Fonts/ (or Content/fonts/ next to the built game).
 
-Server console commands: help, players, kick <ip>, ban <ip>, say <message>, save <file>, load <file>,
-restart, quit. The server reads commands from standard input, so it also runs headless (e.g. under
+Server console commands: help, players, kick <ip>, ban <ip>, say <message>, tp <player> <x> <y> <z>,
+save <file>, load <file>, restart, quit. The server reads commands from standard input, so it also runs headless (e.g. under
 systemd or Docker); Ctrl-C and SIGTERM shut it down cleanly.
 
 
@@ -73,8 +73,11 @@ WHAT CHANGED IN THE PORT
 The game rules, world generator, physics, classes, tools and menus are unchanged. Some fixes were made
 along the way:
 
-  - The server validates client input: only real construction blocks can be built, and bad packets or
-    unknown sound ids are ignored instead of crashing the server or other players' games.
+  - The server is authoritative instead of trusting the client (see ROADMAP.md): it checks movement
+    (speed, walls, flying) and corrects cheaters, picks respawn points, decides deaths (lava, shock,
+    explosions, falls), enforces each class's tools, blocks and cooldowns, only lets you bank next to
+    your own bank, and rate-limits chat, pings and sounds. Bad packets are ignored instead of crashing
+    the server or other players' games. Corrections are logged as "ANTICHEAT:" on the server console.
   - Map chunks and block updates share one ordered channel, so a block change can no longer be undone
     by a late map chunk while joining.
   - Scores above $65,535 no longer wrap on the scoreboard.
@@ -82,7 +85,7 @@ along the way:
   - Connection errors (version mismatch, banned, server full, disconnects) are shown in the server
     browser instead of a Windows message box.
 
-The network protocol is not compatible with v1.5, so the version is now v1.6.
+The network protocol is not compatible with v1.5, so the version is now v1.7.
 
 
 DEVELOPMENT

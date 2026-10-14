@@ -55,6 +55,9 @@ namespace Infiniminer.Tests
             public int ChunksReceived;
             public uint MyId;
             public DiscoveryInfo Discovery;
+            public Vector3 Position;
+            public byte Epoch;
+            public int PositionsReceived;
 
             public Bot()
             {
@@ -85,6 +88,12 @@ namespace Infiniminer.Tests
                             Map[x, y + dy, z] = (BlockType)reader.GetByte();
                     ChunksReceived++;
                 }
+                else if (type == InfiniminerMessage.PlayerSetPosition)
+                {
+                    Position = reader.GetVector3();
+                    Epoch = reader.GetByte();
+                    PositionsReceived++;
+                }
                 else if (type == InfiniminerMessage.PlayerJoined)
                 {
                     uint id = reader.GetUInt();
@@ -106,6 +115,23 @@ namespace Infiniminer.Tests
             public void Send(NetDataWriter writer, NetChannel channel)
             {
                 Peer.Send(writer, channel);
+            }
+
+            public void SendPosition(Vector3 position)
+            {
+                NetDataWriter update = NetExtensions.CreateMessage(InfiniminerMessage.PlayerUpdate);
+                update.Put(position);
+                update.Put(-Vector3.UnitZ);
+                update.Put((byte)PlayerTools.Pickaxe);
+                update.Put(false);
+                update.Put(Epoch);
+                Send(update, NetChannel.UnreliableInOrder1);
+            }
+
+            public bool WasKilled(string message)
+            {
+                return MessagesOfType(InfiniminerMessage.PlayerDead).Any(r => r.GetUInt() == MyId)
+                    && MessagesOfType(InfiniminerMessage.ChatMessage).Any(r => { r.GetByte(); return r.GetString() == "Bot " + message; });
             }
 
             public IEnumerable<NetDataReader> MessagesOfType(InfiniminerMessage type)
@@ -152,8 +178,22 @@ namespace Infiniminer.Tests
             bot.Send(selectClass, NetChannel.ReliableUnordered);
 
             bot.Send(NetExtensions.CreateMessage(InfiniminerMessage.PlayerAlive), NetChannel.ReliableUnordered);
-            WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.PlayerAlive).Any(), "respawn");
+            WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.PlayerAlive).Any() && bot.PositionsReceived > 0, "respawn");
             return bot;
+        }
+
+        // Moves the bot with the server's admin "tp" command and waits for the server to tell it.
+        void Teleport(Bot bot, Vector3 position)
+        {
+            int before = bot.PositionsReceived;
+            server.EnqueueCommand(FormattableString.Invariant($"tp Bot {position.X} {position.Y} {position.Z}"));
+            WaitFor(bot, () => bot.PositionsReceived > before, "teleport");
+            Assert.Equal(position, bot.Position);
+        }
+
+        static Vector3 StandingOn(int x, int y, int z)
+        {
+            return new Vector3(x + 0.5f, y + 2.45f, z + 0.5f);
         }
 
         static void UseTool(Bot bot, Vector3 position, Vector3 heading, PlayerTools tool, BlockType blockType = BlockType.None)
@@ -172,6 +212,16 @@ namespace Infiniminer.Tests
                 if (reader.GetByte() == x && reader.GetByte() == y && reader.GetByte() == z && (BlockType)reader.GetByte() == type)
                     return true;
             return false;
+        }
+
+        static (int x, int y, int z) FindBlock(Bot bot, BlockType type)
+        {
+            for (int x = 1; x < 63; x++)
+                for (int y = 1; y < 63; y++)
+                    for (int z = 1; z < 63; z++)
+                        if (bot.Map[x, y, z] == type)
+                            return (x, y, z);
+            throw new InvalidOperationException("No " + type + " found");
         }
 
         // Finds a column whose topmost block is dirt, with clear air above it.
@@ -206,7 +256,8 @@ namespace Infiniminer.Tests
 
             // Dig the dirt block below us.
             (int x, int y, int z) = FindSurfaceDirt(bot);
-            Vector3 standingAbove = new Vector3(x + 0.5f, y + 1.6f, z + 0.5f);
+            Vector3 standingAbove = StandingOn(x, y, z);
+            Teleport(bot, standingAbove);
             UseTool(bot, standingAbove, -Vector3.UnitY, PlayerTools.Pickaxe);
             WaitFor(bot, () => HasBlockSet(bot, x, y, z, BlockType.None), "dug block to be removed");
 
@@ -242,6 +293,128 @@ namespace Infiniminer.Tests
             bot.Send(chat, NetChannel.ReliableInOrder3);
             WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.ChatMessage).Any(r => { r.GetByte(); return r.GetString() == "Bot (ALL): still alive"; }), "chat echo");
             Assert.DoesNotContain(bot.MessagesOfType(InfiniminerMessage.PlaySound), r => r.GetByte() == 250);
+        }
+
+        [Fact]
+        public void ServerChoosesTheSpawnPoint()
+        {
+            using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);
+            Assert.InRange(bot.Position.X, 2, 63);
+            Assert.InRange(bot.Position.Z, 2, 63);
+            Assert.InRange(bot.Position.Y, 50, 70);
+        }
+
+        [Fact]
+        public void TeleportHacksAreCorrected()
+        {
+            using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);
+            (int x, int y, int z) = FindSurfaceDirt(bot);
+            Vector3 start = StandingOn(x, y, z);
+            Teleport(bot, start);
+            byte epoch = bot.Epoch;
+
+            bot.SendPosition(start + new Vector3(20, 0, 0));
+            WaitFor(bot, () => bot.Epoch != epoch, "position correction");
+            Assert.Equal(start, bot.Position);
+            Assert.Contains(serverLog, line => line.Contains("ANTICHEAT") && line.Contains("moving too fast"));
+        }
+
+        [Fact]
+        public void WalkingIntoTheGroundIsCorrected()
+        {
+            using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);
+            (int x, int y, int z) = FindSurfaceDirt(bot);
+            Vector3 start = StandingOn(x, y, z);
+            Teleport(bot, start);
+            byte epoch = bot.Epoch;
+
+            bot.SendPosition(start - new Vector3(0, 1.5f, 0));
+            WaitFor(bot, () => bot.Epoch != epoch, "position correction");
+            Assert.Equal(start, bot.Position);
+        }
+
+        [Fact]
+        public void ServerKillsPlayersInLava()
+        {
+            using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);
+            (int x, int y, int z) = FindBlock(bot, BlockType.Lava);
+            Teleport(bot, new Vector3(x + 0.5f, y + 0.5f - GameRules.MidBodyOffset, z + 0.5f));
+            WaitFor(bot, () => bot.WasKilled("WAS INCINERATED BY LAVA!"), "lava death");
+        }
+
+        [Fact]
+        public void ServerAppliesFallDamage()
+        {
+            using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);
+            (int x, int y, int z) = FindSurfaceDirt(bot);
+            Vector3 ground = StandingOn(x, y, z);
+            Vector3 start = ground + new Vector3(0, 20, 0);
+            Teleport(bot, start);
+
+            for (float height = start.Y - 0.8f; height > ground.Y; height -= 0.8f)
+            {
+                bot.SendPosition(new Vector3(ground.X, height, ground.Z));
+                Thread.Sleep(50);
+                bot.Net.PollEvents();
+            }
+            bot.SendPosition(ground);
+            WaitFor(bot, () => bot.WasKilled("WAS KILLED BY GRAVITY!"), "fall death");
+        }
+
+        [Fact]
+        public void ClassesCanOnlyUseTheirOwnToolsAndBlocks()
+        {
+            using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);
+            (int x, int y, int z) = FindSurfaceDirt(bot);
+            Vector3 start = StandingOn(x, y, z);
+            Teleport(bot, start);
+
+            // Miners don't carry the engineer's deconstruction gun: the dirt below survives.
+            UseTool(bot, start, -Vector3.UnitY, PlayerTools.DeconstructionGun);
+            // Miners can't build banks, only their own blocks.
+            UseTool(bot, start, -Vector3.UnitY, PlayerTools.ConstructionGun, BlockType.BankRed);
+            WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.TriggerConstructionGunAnimation).Any(r => r.GetFloat() < 0), "failed build");
+            Assert.False(HasBlockSet(bot, x, y + 1, z, BlockType.BankRed));
+            Assert.False(HasBlockSet(bot, x, y, z, BlockType.None));
+        }
+
+        [Fact]
+        public void PingsCannotImpersonateOtherPlayers()
+        {
+            using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);
+            NetDataWriter ping = NetExtensions.CreateMessage(InfiniminerMessage.PlayerPing);
+            ping.Put(12345u);
+            bot.Send(ping, NetChannel.ReliableUnordered);
+            WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.PlayerPing).Any(), "ping");
+            Assert.All(bot.MessagesOfType(InfiniminerMessage.PlayerPing), r => Assert.Equal(bot.MyId, r.GetUInt()));
+        }
+
+        [Fact]
+        public void ChangingTeamWhileAliveKillsYou()
+        {
+            using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);
+            NetDataWriter setTeam = NetExtensions.CreateMessage(InfiniminerMessage.PlayerSetTeam);
+            setTeam.Put((byte)PlayerTeam.Blue);
+            bot.Send(setTeam, NetChannel.ReliableInOrder2);
+            WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.PlayerDead).Any(r => r.GetUInt() == bot.MyId), "death on team change");
+        }
+
+        [Fact]
+        public void ChatIsRateLimited()
+        {
+            using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);
+            for (int i = 0; i < 20; i++)
+            {
+                NetDataWriter chat = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
+                chat.Put((byte)ChatMessageType.SayAll);
+                chat.Put("spam " + i);
+                bot.Send(chat, NetChannel.ReliableInOrder3);
+            }
+            WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.ChatMessage).Any(r => { r.GetByte(); return r.GetString().StartsWith("Bot (ALL): spam 4"); }), "chat");
+            Thread.Sleep(300);
+            bot.Net.PollEvents();
+            int delivered = bot.MessagesOfType(InfiniminerMessage.ChatMessage).Count(r => { r.GetByte(); return r.GetString().StartsWith("Bot (ALL): spam"); });
+            Assert.InRange(delivered, 5, 6);
         }
 
         [Fact]

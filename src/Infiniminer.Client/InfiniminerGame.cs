@@ -347,6 +347,8 @@ namespace Infiniminer
                         {
                             Player player = propertyBag.playerList[playerId];
                             player.Alive = false;
+                            if (playerId == propertyBag.playerMyId)
+                                propertyBag.EnterDeathState();
                             propertyBag.particleEngine.CreateBloodSplatter(player.Position, player.Team == PlayerTeam.Red ? Color.Red : Color.Blue);
                             if (playerId != propertyBag.playerMyId)
                                 propertyBag.PlaySound(InfiniminerSound.Death, player.Position);
@@ -361,6 +363,8 @@ namespace Infiniminer
                         {
                             Player player = propertyBag.playerList[playerId];
                             player.Alive = true;
+                            if (playerId == propertyBag.playerMyId)
+                                propertyBag.OnRespawned();
                         }
                     }
                     break;
@@ -407,6 +411,14 @@ namespace Infiniminer
                                 propertyBag.PlaySound(InfiniminerSound.Ping);
                             }
                         }
+                    }
+                    break;
+
+                case InfiniminerMessage.PlayerSetPosition:
+                    {
+                        Vector3 position = msgBuffer.GetXnaVector3();
+                        byte epoch = msgBuffer.GetByte();
+                        propertyBag.SetPositionFromServer(position, epoch);
                     }
                     break;
 

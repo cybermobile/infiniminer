@@ -57,6 +57,8 @@ namespace Infiniminer
         public int playerBlockSelected = 0;
         public PlayerTeam playerTeam = PlayerTeam.Red;
         public bool playerDead = true;
+        public bool respawnPending = false;
+        public byte positionEpoch = 0;
         public uint playerOre = 0;
         public uint playerCash = 0;
         public uint playerWeight = 0;
@@ -166,70 +168,59 @@ namespace Infiniminer
             if (!IsConnected)
                 return;
 
+            EnterDeathState();
+
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerDead);
+            msgBuffer.Put(deathMessage);
+            Send(msgBuffer, NetChannel.ReliableInOrder2);
+        }
+
+        // Shows the death screen. Called for deaths we notice ourselves and for deaths the server decides.
+        public void EnterDeathState()
+        {
+            if (playerDead && screenEffect == ScreenEffect.Death)
+                return;
+
             PlaySound(InfiniminerSound.Death);
             playerPosition = new Vector3(randGen.Next(2, 62), 66, randGen.Next(2, 62));
             playerVelocity = Vector3.Zero;
             playerDead = true;
+            respawnPending = false;
             screenEffect = ScreenEffect.Death;
             screenEffectCounter = 0;
-
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerDead);
-            msgBuffer.Put(deathMessage);
-            Send(msgBuffer, NetChannel.ReliableUnordered);
         }
 
+        // Asks the server to respawn us; it picks the spawn point and replies with our new position.
         public void RespawnPlayer()
         {
-            if (!IsConnected)
+            if (!IsConnected || respawnPending)
                 return;
 
-            playerDead = false;
+            respawnPending = true;
+            screenEffect = ScreenEffect.None;
+            screenEffectCounter = 0;
 
-            // Respawn a few blocks above a safe position above altitude 0.
-            bool positionFound = false;
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerAlive);
+            Send(msgBuffer, NetChannel.ReliableInOrder2);
+        }
 
-            // Try 20 times; use a potentially invalid position if we fail.
-            for (int i = 0; i < 20; i++)
-            {
-                // Pick a random starting point.
-                Vector3 startPos = new Vector3(randGen.Next(2, 62), 63, randGen.Next(2, 62));
-
-                // See if this is a safe place to drop.
-                for (startPos.Y = 63; startPos.Y >= 54; startPos.Y--)
-                {
-                    BlockType blockType = blockEngine.BlockAtPoint(startPos);
-                    if (blockType == BlockType.Lava)
-                        break;
-                    else if (blockType != BlockType.None)
-                    {
-                        // We have found a valid place to spawn, so spawn a few above it.
-                        playerPosition = startPos + Vector3.UnitY * 5;
-                        positionFound = true;
-                        break;
-                    }
-                }
-
-                // If we found a position, no need to try anymore!
-                if (positionFound)
-                    break;
-            }
-
-            // If we failed to find a spawn point, drop randomly.
-            if (!positionFound)
-                playerPosition = new Vector3(randGen.Next(2, 62), 66, randGen.Next(2, 62));
-
-            // Drop the player on the middle of the block, not at the corner.
-            playerPosition += new Vector3(0.5f, 0, 0.5f);
-
-            // Zero out velocity and reset camera and screen effects.
+        // The server has put us somewhere: a respawn, or a correction of a move it didn't accept.
+        public void SetPositionFromServer(Vector3 position, byte epoch)
+        {
+            playerPosition = position;
             playerVelocity = Vector3.Zero;
+            positionEpoch = epoch;
+            UpdateCamera();
+        }
+
+        // The server confirmed our respawn.
+        public void OnRespawned()
+        {
+            playerDead = false;
+            respawnPending = false;
             screenEffect = ScreenEffect.None;
             screenEffectCounter = 0;
             UpdateCamera();
-
-            // Tell the server we have respawned.
-            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerAlive);
-            Send(msgBuffer, NetChannel.ReliableUnordered);
         }
 
         public void PlaySound(InfiniminerSound sound)
@@ -322,7 +313,7 @@ namespace Infiniminer
                 return;
 
             NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.DepositCash);
-            Send(msgBuffer, NetChannel.ReliableUnordered);
+            Send(msgBuffer, NetChannel.ReliableInOrder2);
         }
 
         public void DepositOre()
@@ -331,7 +322,7 @@ namespace Infiniminer
                 return;
 
             NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.DepositOre);
-            Send(msgBuffer, NetChannel.ReliableUnordered);
+            Send(msgBuffer, NetChannel.ReliableInOrder2);
         }
 
         public void WithdrawOre()
@@ -340,7 +331,7 @@ namespace Infiniminer
                 return;
 
             NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.WithdrawOre);
-            Send(msgBuffer, NetChannel.ReliableUnordered);
+            Send(msgBuffer, NetChannel.ReliableInOrder2);
         }
 
         public void SetPlayerTeam(PlayerTeam playerTeam)
@@ -352,7 +343,7 @@ namespace Infiniminer
 
             NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerSetTeam);
             msgBuffer.Put((byte)playerTeam);
-            Send(msgBuffer, NetChannel.ReliableUnordered);
+            Send(msgBuffer, NetChannel.ReliableInOrder2);
         }
 
         public void SetPlayerClass(PlayerClass playerClass)
@@ -364,56 +355,13 @@ namespace Infiniminer
 
             NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.SelectClass);
             msgBuffer.Put((byte)playerClass);
-            Send(msgBuffer, NetChannel.ReliableUnordered);
+            Send(msgBuffer, NetChannel.ReliableInOrder2);
 
             playerToolSelected = 0;
             playerBlockSelected = 0;
 
-            switch (playerClass)
-            {
-                case PlayerClass.Prospector:
-                    playerTools = new PlayerTools[3] {  PlayerTools.Pickaxe,
-                                                        PlayerTools.ConstructionGun,
-                                                        PlayerTools.ProspectingRadar     };
-                    playerBlocks = new BlockType[4] {   playerTeam == PlayerTeam.Red ? BlockType.SolidRed : BlockType.SolidBlue,
-                                                        playerTeam == PlayerTeam.Red ? BlockType.TransRed : BlockType.TransBlue,
-                                                        playerTeam == PlayerTeam.Red ? BlockType.BeaconRed : BlockType.BeaconBlue,
-                                                        BlockType.Ladder    };
-                    break;
-
-                case PlayerClass.Miner:
-                    playerTools = new PlayerTools[2] {  PlayerTools.Pickaxe,
-                                                        PlayerTools.ConstructionGun     };
-                    playerBlocks = new BlockType[3] {   playerTeam == PlayerTeam.Red ? BlockType.SolidRed : BlockType.SolidBlue,
-                                                        playerTeam == PlayerTeam.Red ? BlockType.TransRed : BlockType.TransBlue,
-                                                        BlockType.Ladder    };
-                    break;
-
-                case PlayerClass.Engineer:
-                    playerTools = new PlayerTools[3] {  PlayerTools.Pickaxe,
-                                                        PlayerTools.ConstructionGun,     
-                                                        PlayerTools.DeconstructionGun   };
-                    playerBlocks = new BlockType[9] {   playerTeam == PlayerTeam.Red ? BlockType.SolidRed : BlockType.SolidBlue,
-                                                        BlockType.TransRed,
-                                                        BlockType.TransBlue,
-                                                        BlockType.Road,
-                                                        BlockType.Ladder,
-                                                        BlockType.Jump,
-                                                        BlockType.Shock,
-                                                        playerTeam == PlayerTeam.Red ? BlockType.BeaconRed : BlockType.BeaconBlue,
-                                                        playerTeam == PlayerTeam.Red ? BlockType.BankRed : BlockType.BankBlue  };
-                    break;
-
-                case PlayerClass.Sapper:
-                    playerTools = new PlayerTools[3] {  PlayerTools.Pickaxe,
-                                                        PlayerTools.ConstructionGun,
-                                                        PlayerTools.Detonator     };
-                    playerBlocks = new BlockType[4] {   playerTeam == PlayerTeam.Red ? BlockType.SolidRed : BlockType.SolidBlue,
-                                                        playerTeam == PlayerTeam.Red ? BlockType.TransRed : BlockType.TransBlue,
-                                                        BlockType.Ladder,
-                                                        BlockType.Explosive     };
-                    break;
-            }
+            playerTools = GameRules.GetTools(playerClass);
+            playerBlocks = GameRules.GetBlocks(playerClass, playerTeam);
         }
 
         public void FireRadar()
@@ -552,15 +500,7 @@ namespace Infiniminer
 
         public float GetToolCooldown(PlayerTools tool)
         {
-            switch (tool)
-            {
-                case PlayerTools.Pickaxe: return 0.55f;
-                case PlayerTools.Detonator: return 0.01f;
-                case PlayerTools.ConstructionGun: return 0.5f;
-                case PlayerTools.DeconstructionGun: return 0.5f;
-                case PlayerTools.ProspectingRadar: return 0.5f;
-                default: return 0;
-            }
+            return GameRules.GetToolCooldown(tool, playerClass);
         }
 
         public void SendPlayerUpdate()
@@ -573,6 +513,7 @@ namespace Infiniminer
             msgBuffer.Put(playerCamera.GetLookVector());
             msgBuffer.Put((byte)playerTools[playerToolSelected]);
             msgBuffer.Put(playerToolCooldown > 0.001f);
+            msgBuffer.Put(positionEpoch);
             Send(msgBuffer, NetChannel.UnreliableInOrder1);
         }
     }

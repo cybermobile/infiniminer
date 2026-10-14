@@ -9,11 +9,11 @@ namespace Infiniminer.States
 {
     public class MainGameState : State
     {
-        const float MOVESPEED = 3.5f;
-        const float GRAVITY = -8.0f;
-        const float JUMPVELOCITY = 4.0f;
-        const float CLIMBVELOCITY = 2.5f;
-        const float DIEVELOCITY = 15.0f;
+        const float MOVESPEED = GameRules.MoveSpeed;
+        const float GRAVITY = GameRules.Gravity;
+        const float JUMPVELOCITY = GameRules.JumpVelocity;
+        const float CLIMBVELOCITY = GameRules.ClimbVelocity;
+        const float DIEVELOCITY = GameRules.DieVelocity;
 
         string nextState = null;
         bool mouseInitialized = false;
@@ -78,10 +78,6 @@ namespace Infiniminer.States
             if (mouseInitialized && mouseState.LeftButton == ButtonState.Pressed && !_P.playerDead && _P.playerToolCooldown == 0 && _P.playerTools[_P.playerToolSelected] == PlayerTools.Pickaxe)
             {
                 _P.FirePickaxe();
-                if (_P.playerClass == PlayerClass.Miner)
-                    _P.playerToolCooldown = _P.GetToolCooldown(PlayerTools.Pickaxe) * 0.4f;
-                else
-                    _P.playerToolCooldown = _P.GetToolCooldown(PlayerTools.Pickaxe);
             }
 
             // Prospector radar stuff.
@@ -478,7 +474,7 @@ namespace Infiniminer.States
             }     
        
             // If we"re dead, come back to life.
-            if (_P.playerDead && _P.screenEffectCounter > 2)
+            if (_P.playerDead && !_P.respawnPending && _P.screenEffectCounter > 2)
             {
                 _P.RespawnPlayer();
             }

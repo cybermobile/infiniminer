@@ -47,10 +47,19 @@ namespace Infiniminer
 
         public Action<string> Log = line => Console.WriteLine(line);
 
+        readonly Stopwatch clock = Stopwatch.StartNew();
+        readonly MovementValidator movementValidator;
+
+        double Now
+        {
+            get { return clock.Elapsed.TotalSeconds; }
+        }
+
         public InfiniminerServer(ServerConfig config, string dataDirectory)
         {
             this.config = config;
             this.dataDirectory = dataDirectory;
+            movementValidator = new MovementValidator((x, y, z) => blockList[x, y, z]);
         }
 
         public int Port
@@ -196,6 +205,7 @@ namespace Infiniminer
                         ConsoleWrite(" kick <ip>");
                         ConsoleWrite(" ban <ip>");
                         ConsoleWrite(" say <message>");
+                        ConsoleWrite(" tp <player name> <x> <y> <z>");
                         ConsoleWrite(" save <mapfile>");
                         ConsoleWrite(" load <mapfile>");
                         ConsoleWrite(" restart");
@@ -253,6 +263,29 @@ namespace Infiniminer
                         for (int i = 1; i < args.Length; i++)
                             message += args[i] + " ";
                         SendServerMessage(TextUtil.Sanitize(message));
+                    }
+                    break;
+
+                case "tp":
+                    {
+                        // The last three arguments are the coordinates; the name may contain spaces.
+                        if (args.Length >= 5
+                            && float.TryParse(args[^3], NumberStyles.Float, CultureInfo.InvariantCulture, out float x)
+                            && float.TryParse(args[^2], NumberStyles.Float, CultureInfo.InvariantCulture, out float y)
+                            && float.TryParse(args[^1], NumberStyles.Float, CultureInfo.InvariantCulture, out float z))
+                        {
+                            string handle = string.Join(" ", args[1..^3]);
+                            ServerPlayer target = playerList.Values.FirstOrDefault(p => p.Handle == handle);
+                            if (target == null || !target.Alive)
+                                ConsoleWrite("ERROR: no living player called " + handle);
+                            else
+                            {
+                                target.Position = new Vector3(x, y, z);
+                                SendSetPosition(target, target.Position);
+                            }
+                        }
+                        else
+                            ConsoleWrite("USAGE: tp <player name> <x> <y> <z>");
                     }
                     break;
 
@@ -459,6 +492,10 @@ namespace Infiniminer
             // Process any messages that are here.
             netServer.PollEvents();
 
+            // Lava, shock blocks and the void are lethal whether or not the client admits it.
+            foreach (ServerPlayer p in playerList.Values.ToList())
+                CheckHazards(p);
+
             // Time to send a new server update?
             TimeSpan updateTimeSpan = DateTime.Now - lastServerListUpdate;
             if (updateTimeSpan.TotalMinutes > 5)
@@ -623,7 +660,11 @@ namespace Infiniminer
                     {
                         // Read the data from the packet.
                         ChatMessageType chatType = (ChatMessageType)msgBuffer.GetByte();
-                        string chatString = TextUtil.Sanitize(msgBuffer.GetString());
+                        string chatString = TextUtil.Sanitize(msgBuffer.GetString()).Trim();
+                        if (chatString.Length > MaxChatLength)
+                            chatString = chatString.Substring(0, MaxChatLength);
+                        if (chatString == "" || !player.ChatLimiter.TryTake(Now))
+                            break;
                         ConsoleWrite("CHAT: (" + player.Handle + ") " + chatString);
 
                         // Append identifier information.
@@ -654,13 +695,33 @@ namespace Infiniminer
                         Vector3 playerHeading = msgBuffer.GetVector3();
                         PlayerTools playerTool = (PlayerTools)msgBuffer.GetByte();
                         BlockType blockType = (BlockType)msgBuffer.GetByte();
+
+                        // Only living players can use tools, and only the tools their class carries,
+                        // no faster than the tool's cooldown allows.
+                        if (!player.Alive || !player.HasClass)
+                            break;
+                        if (!player.ToolLimiters.TryGetValue(playerTool, out RateLimiter toolLimiter) || !toolLimiter.TryTake(Now))
+                            break;
+                        if (!float.IsFinite(playerHeading.X) || !float.IsFinite(playerHeading.Y) || !float.IsFinite(playerHeading.Z) || playerHeading == Vector3.Zero)
+                            break;
+                        playerHeading = Vector3.Normalize(playerHeading);
+
+                        // The client's position at the moment it used the tool is a little more precise than the
+                        // last update we have, so use it, unless it's further away than lag can explain.
+                        if (!float.IsFinite(playerPosition.X) || !float.IsFinite(playerPosition.Y) || !float.IsFinite(playerPosition.Z)
+                            || Vector3.Distance(playerPosition, player.Position) > MaxToolPositionError)
+                            playerPosition = player.Position;
+
                         switch (playerTool)
                         {
                             case PlayerTools.Pickaxe:
                                 UsePickaxe(player, playerPosition, playerHeading);
                                 break;
                             case PlayerTools.ConstructionGun:
-                                UseConstructionGun(player, playerPosition, playerHeading, blockType);
+                                if (Array.IndexOf(GameRules.GetBlocks(player.Class, player.Team), blockType) < 0)
+                                    TriggerConstructionGunAnimation(player, -0.2f);
+                                else
+                                    UseConstructionGun(player, playerPosition, playerHeading, blockType);
                                 break;
                             case PlayerTools.DeconstructionGun:
                                 UseDeconstructionGun(player, playerPosition, playerHeading);
@@ -678,7 +739,15 @@ namespace Infiniminer
                 case InfiniminerMessage.SelectClass:
                     {
                         PlayerClass playerClass = (PlayerClass)msgBuffer.GetByte();
+                        if (!Enum.IsDefined(playerClass))
+                            break;
+
+                        // Changing class is only possible while dead (the client kills you first).
+                        if (player.Alive)
+                            KillPlayer(player, "");
+
                         ConsoleWrite("SELECT_CLASS: " + player.Handle + ", " + playerClass.ToString());
+                        player.SetClass(playerClass);
                         switch (playerClass)
                         {
                             case PlayerClass.Engineer:
@@ -705,8 +774,13 @@ namespace Infiniminer
                 case InfiniminerMessage.PlayerSetTeam:
                     {
                         PlayerTeam playerTeam = (PlayerTeam)msgBuffer.GetByte();
-                        if (!Enum.IsDefined(playerTeam))
+                        if (playerTeam != PlayerTeam.Red && playerTeam != PlayerTeam.Blue)
                             break;
+
+                        // Switching teams while alive would let you carry loot to the other side.
+                        if (player.Alive)
+                            KillPlayer(player, "");
+
                         ConsoleWrite("SELECT_TEAM: " + player.Handle + ", " + playerTeam.ToString());
                         player.Team = playerTeam;
                         SendResourceUpdate(player);
@@ -717,49 +791,44 @@ namespace Infiniminer
                 case InfiniminerMessage.PlayerDead:
                     {
                         string deathMessage = TextUtil.Sanitize(msgBuffer.GetString());
-                        ConsoleWrite("PLAYER_DEAD: " + player.Handle + " " + deathMessage);
-
-                        player.Ore = 0;
-                        player.Cash = 0;
-                        player.Weight = 0;
-                        player.Alive = false;
-                        SendResourceUpdate(player);
-                        SendPlayerDead(player);
-
-                        if (deathMessage != "")
-                        {
-                            NetDataWriter chatPacket = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
-                            chatPacket.Put((byte)(player.Team == PlayerTeam.Red ? ChatMessageType.SayRedTeam : ChatMessageType.SayBlueTeam));
-                            chatPacket.Put(player.Handle + " " + deathMessage);
-                            SendToAll(chatPacket, NetChannel.ReliableInOrder3);
-                        }
+                        if (deathMessage.Length > MaxChatLength)
+                            deathMessage = deathMessage.Substring(0, MaxChatLength);
+                        KillPlayer(player, deathMessage);
                     }
                     break;
 
                 case InfiniminerMessage.PlayerAlive:
                     {
-                        ConsoleWrite("PLAYER_ALIVE: " + player.Handle);
-                        player.Ore = 0;
-                        player.Cash = 0;
-                        player.Weight = 0;
-                        player.Alive = true;
-                        SendResourceUpdate(player);
-                        SendPlayerAlive(player);
+                        if (!player.Alive)
+                            RespawnPlayer(player);
                     }
                     break;
 
                 case InfiniminerMessage.PlayerUpdate:
                     {
-                        player.Position = msgBuffer.GetVector3();
-                        player.Heading = msgBuffer.GetVector3();
-                        player.Tool = (PlayerTools)msgBuffer.GetByte();
-                        player.UsingTool = msgBuffer.GetBool();
+                        Vector3 position = msgBuffer.GetVector3();
+                        Vector3 heading = msgBuffer.GetVector3();
+                        PlayerTools tool = (PlayerTools)msgBuffer.GetByte();
+                        bool usingTool = msgBuffer.GetBool();
+                        byte epoch = msgBuffer.AvailableBytes > 0 ? msgBuffer.GetByte() : (byte)(player.PositionEpoch - 1);
+
+                        if (float.IsFinite(heading.X) && float.IsFinite(heading.Y) && float.IsFinite(heading.Z))
+                            player.Heading = heading;
+                        player.Tool = player.HasClass && Array.IndexOf(GameRules.GetTools(player.Class), tool) >= 0 ? tool : PlayerTools.Pickaxe;
+                        player.UsingTool = usingTool;
+
+                        // Updates sent before the server last moved this player are stale; dead players don't move.
+                        if (player.Alive && epoch == player.PositionEpoch)
+                            UpdatePlayerPosition(player, position);
+
                         SendPlayerUpdate(player);
                     }
                     break;
 
                 case InfiniminerMessage.DepositOre:
                     {
+                        if (!player.Alive || !NearOwnBank(player))
+                            break;
                         DepositOre(player);
                         foreach (ServerPlayer p in playerList.Values)
                             SendResourceUpdate(p);
@@ -768,6 +837,8 @@ namespace Infiniminer
 
                 case InfiniminerMessage.WithdrawOre:
                     {
+                        if (!player.Alive || !NearOwnBank(player))
+                            break;
                         WithdrawOre(player);
                         foreach (ServerPlayer p in playerList.Values)
                             SendResourceUpdate(p);
@@ -776,26 +847,174 @@ namespace Infiniminer
 
                 case InfiniminerMessage.PlayerPing:
                     {
-                        SendPlayerPing(msgBuffer.GetUInt());
+                        // The id in the packet is ignored so nobody can ping as someone else.
+                        if (player.PingLimiter.TryTake(Now))
+                            SendPlayerPing(player.ID);
                     }
                     break;
 
                 case InfiniminerMessage.PlaySound:
                     {
+                        // Clients only ask for the sounds of their own landings and jump blocks.
                         InfiniminerSound sound = (InfiniminerSound)msgBuffer.GetByte();
-                        Vector3 position = msgBuffer.GetVector3();
-                        if (Enum.IsDefined(sound))
-                            PlaySound(sound, position);
+                        msgBuffer.GetVector3();
+                        if ((sound == InfiniminerSound.GroundHit || sound == InfiniminerSound.Jumpblock) && player.Alive && player.SoundLimiter.TryTake(Now))
+                            PlaySound(sound, player.Position);
                     }
                     break;
             }
+        }
+
+        const int MaxChatLength = 160;
+        const float MaxToolPositionError = 1.5f;
+
+        void UpdatePlayerPosition(ServerPlayer player, Vector3 position)
+        {
+            MovementResult result = movementValidator.Validate(player.Movement, player.Team, position, Now);
+            if (!result.Accepted)
+            {
+                // If the client walked into a block it doesn't know about, resend the blocks there so we agree.
+                if (result.BlockedAt.HasValue)
+                    ResendBlocksAround(player, result.BlockedAt.Value);
+                CorrectPlayerPosition(player, result.Reason);
+                return;
+            }
+
+            player.Position = position;
+            if (result.FallHeight >= MovementValidator.LethalFallHeight)
+                KillPlayer(player, "WAS KILLED BY GRAVITY!");
+        }
+
+        void ResendBlocksAround(ServerPlayer player, Vector3 point)
+        {
+            int cx = GameConstants.ToBlock(point.X), cy = GameConstants.ToBlock(point.Y), cz = GameConstants.ToBlock(point.Z);
+            for (int x = cx - 1; x <= cx + 1; x++)
+                for (int y = cy - 1; y <= cy + 1; y++)
+                    for (int z = cz - 1; z <= cz + 1; z++)
+                        if (InBounds(x, y, z))
+                        {
+                            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.BlockSet);
+                            msgBuffer.Put((byte)x);
+                            msgBuffer.Put((byte)y);
+                            msgBuffer.Put((byte)z);
+                            msgBuffer.Put((byte)blockList[x, y, z]);
+                            player.Peer.Send(msgBuffer, NetChannel.World);
+                        }
+        }
+
+        // Moves the player back to their last valid position.
+        void CorrectPlayerPosition(ServerPlayer player, string reason)
+        {
+            if (Now - player.LastCorrectionLog > 5)
+            {
+                ConsoleWrite("ANTICHEAT: corrected " + player.Handle + " (" + player.IP + "): " + reason
+                    + FormattableString.Invariant($" [last valid {player.Position.X:0.00},{player.Position.Y:0.00},{player.Position.Z:0.00}]"));
+                player.LastCorrectionLog = Now;
+            }
+            SendSetPosition(player, player.Position);
+        }
+
+        void SendSetPosition(ServerPlayer player, Vector3 position)
+        {
+            player.PositionEpoch++;
+            player.Movement.Reset(position, Now);
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerSetPosition);
+            msgBuffer.Put(position);
+            msgBuffer.Put(player.PositionEpoch);
+            player.Peer.Send(msgBuffer, NetChannel.ReliableInOrder2);
+        }
+
+        public void KillPlayer(ServerPlayer player, string deathMessage)
+        {
+            if (!player.Alive)
+                return;
+
+            ConsoleWrite("PLAYER_DEAD: " + player.Handle + " " + deathMessage);
+
+            player.Ore = 0;
+            player.Cash = 0;
+            player.Weight = 0;
+            player.Alive = false;
+            SendResourceUpdate(player);
+            SendPlayerDead(player);
+
+            if (deathMessage != "")
+            {
+                NetDataWriter chatPacket = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
+                chatPacket.Put((byte)(player.Team == PlayerTeam.Red ? ChatMessageType.SayRedTeam : ChatMessageType.SayBlueTeam));
+                chatPacket.Put(player.Handle + " " + deathMessage);
+                SendToAll(chatPacket, NetChannel.ReliableInOrder3);
+            }
+        }
+
+        public void RespawnPlayer(ServerPlayer player)
+        {
+            ConsoleWrite("PLAYER_ALIVE: " + player.Handle);
+            player.Position = FindSpawnPosition();
+            SendSetPosition(player, player.Position);
+
+            player.Ore = 0;
+            player.Cash = 0;
+            player.Weight = 0;
+            player.Alive = true;
+            SendResourceUpdate(player);
+            SendPlayerAlive(player);
+        }
+
+        // Drop the player a few blocks above a random safe spot on the surface (the client used to choose this).
+        public Vector3 FindSpawnPosition()
+        {
+            for (int i = 0; i < 20; i++)
+            {
+                Vector3 startPos = new Vector3(randGen.Next(2, 62), 63, randGen.Next(2, 62));
+                for (startPos.Y = 63; startPos.Y >= 54; startPos.Y--)
+                {
+                    BlockType blockType = BlockAtPoint(startPos);
+                    if (blockType == BlockType.Lava)
+                        break;
+                    else if (blockType != BlockType.None)
+                        return startPos + Vector3.UnitY * 5 + new Vector3(0.5f, 0, 0.5f);
+                }
+            }
+            return new Vector3(randGen.Next(2, 62) + 0.5f, 66, randGen.Next(2, 62) + 0.5f);
+        }
+
+        void CheckHazards(ServerPlayer player)
+        {
+            if (!player.Alive)
+                return;
+
+            Vector3 position = player.Position;
+            BlockType standingOn = BlockAtPoint(position + new Vector3(0, GameRules.FootOffset, 0));
+            if (standingOn == BlockType.Lava
+                || BlockAtPoint(position) == BlockType.Lava
+                || BlockAtPoint(position + new Vector3(0, GameRules.MidBodyOffset, 0)) == BlockType.Lava
+                || BlockAtPoint(position + new Vector3(0, GameRules.LowerBodyOffset, 0)) == BlockType.Lava)
+                KillPlayer(player, "WAS INCINERATED BY LAVA!");
+            else if (BlockAtPoint(position + new Vector3(0, GameRules.HeadOffset, 0)) == BlockType.Shock)
+                KillPlayer(player, "WAS ELECTROCUTED!");
+            else if (position.Y < -30)
+                KillPlayer(player, "WAS KILLED BY MISADVENTURE!");
+        }
+
+        bool NearOwnBank(ServerPlayer player)
+        {
+            BlockType ownBank = player.Team == PlayerTeam.Red ? BlockType.BankRed : BlockType.BankBlue;
+            int px = GameConstants.ToBlock(player.Position.X), py = GameConstants.ToBlock(player.Position.Y), pz = GameConstants.ToBlock(player.Position.Z);
+            for (int x = px - 3; x <= px + 3; x++)
+                for (int y = py - 3; y <= py + 3; y++)
+                    for (int z = pz - 3; z <= pz + 3; z++)
+                        if (InBounds(x, y, z) && blockList[x, y, z] == ownBank
+                            && Vector3.Distance(new Vector3(x + 0.5f, y + 0.5f, z + 0.5f), player.Position) <= 3.5f)
+                            return true;
+            return false;
         }
 
         public void DepositForPlayers()
         {
             foreach (ServerPlayer p in playerList.Values)
             {
-                if (p.Position.Y > MAPSIZE - GameConstants.GroundLevel)
+                if (p.Alive && p.Position.Y > MAPSIZE - GameConstants.GroundLevel)
                     DepositCash(p);
             }
 
@@ -988,7 +1207,7 @@ namespace Infiniminer
             int z = GameConstants.ToBlock(buildPoint.Z);
             foreach (ServerPlayer p in playerList.Values)
             {
-                if ((int)p.Position.X == x && (int)p.Position.Z == z && ((int)p.Position.Y == y || (int)p.Position.Y - 1 == y))
+                if (p.Alive && (int)p.Position.X == x && (int)p.Position.Z == z && ((int)p.Position.Y == y || (int)p.Position.Y - 1 == y))
                     actionFailed = true;
             }
 
@@ -1148,6 +1367,11 @@ namespace Infiniminer
                         if (destroyBlock)
                             SetBlock(x + dx, y + dy, z + dz, BlockType.None, PlayerTeam.None);
                     }
+
+            // Anyone too close dies.
+            foreach (ServerPlayer p in playerList.Values.ToList())
+                if (p.Alive && Vector3.Distance(new Vector3(x + 0.5f, y + 0.5f, z + 0.5f), p.Position) < 3)
+                    KillPlayer(p, "WAS KILLED IN AN EXPLOSION!");
 
             // Send off the explosion to clients.
             NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.TriggerExplosion);

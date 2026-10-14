@@ -106,6 +106,7 @@ namespace Infiniminer
         PlaySound,              // byte sound, bool isPositional, ?Vector3 location
         TriggerConstructionGunAnimation,
         SetBeacon,              // vector3 position, string text ("" means remove), byte team
+        PlayerSetPosition,      // vector3 position, byte epoch: the server moves the player (respawn or correction)
     }
 
     public class Beacon
@@ -116,8 +117,8 @@ namespace Infiniminer
 
     public static class GameConstants
     {
-        // Bumped from v1.5: the network transport changed, so legacy clients and servers cannot interoperate.
-        public const string Version = "v1.6";
+        // v1.6: new network transport (LiteNetLib). v1.7: server-authoritative movement and respawns.
+        public const string Version = "v1.7";
         public const string AppIdentifier = "InfiniminerPlus";
         public const int DefaultPort = 5565;
         public const int MapSize = 64;

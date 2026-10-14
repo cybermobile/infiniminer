@@ -28,6 +28,30 @@ namespace Infiniminer
         // in their tool usage animation.
         public bool QueueAnimationBreak = false;
 
+        // Server-side bookkeeping used to enforce the rules.
+        public PlayerClass Class = PlayerClass.Miner;
+        public bool HasClass = false;
+        public byte PositionEpoch = 0;     // bumped whenever the server moves the player; stale updates are ignored
+        public readonly MovementState Movement = new MovementState();
+        public readonly RateLimiter ChatLimiter = new RateLimiter(5, 1);
+        public readonly RateLimiter PingLimiter = new RateLimiter(2, 1);
+        public readonly RateLimiter SoundLimiter = new RateLimiter(4, 4);
+        public Dictionary<PlayerTools, RateLimiter> ToolLimiters = new Dictionary<PlayerTools, RateLimiter>();
+        public double LastCorrectionLog = double.MinValue;
+
+        public void SetClass(PlayerClass playerClass)
+        {
+            Class = playerClass;
+            HasClass = true;
+            ToolLimiters = new Dictionary<PlayerTools, RateLimiter>();
+            foreach (PlayerTools tool in GameRules.GetTools(playerClass))
+            {
+                // Allow a small burst (packets can arrive bunched up) but not a faster sustained rate.
+                float cooldown = Math.Max(0.01f, GameRules.GetToolCooldown(tool, playerClass));
+                ToolLimiters[tool] = new RateLimiter(2, 1 / cooldown);
+            }
+        }
+
         public ServerPlayer(NetPeer peer, string ip)
         {
             Peer = peer;
