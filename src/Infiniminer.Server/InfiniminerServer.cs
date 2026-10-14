@@ -53,6 +53,9 @@ namespace Infiniminer
         // Server restarting variables.
         DateTime restartTime = DateTime.Now;
         bool restartTriggered = false;
+        public const string WorldFile = "world.sav";
+        DateTime lastWorldSave = DateTime.Now;
+        public const double WorldSaveInterval = 120;     // seconds between autosaves with "persist"
 
         // Store the last time that we did a flow calculation.
         DateTime lastFlowCalc = DateTime.Now;
@@ -528,6 +531,28 @@ namespace Infiniminer
         // After a map is loaded: rebuild what we track about special blocks, and give everyone the new world.
         void ResendWorld()
         {
+            RebuildBlockTracking();
+            foreach (ServerPlayer player in playerList.Values.ToList())
+            {
+                // Nobody should end up inside the new map's blocks: everyone respawns.
+                KillPlayer(player, "");
+                SendCurrentMap(player.Peer);
+                foreach (KeyValuePair<Vector3, Beacon> bPair in beaconList)
+                {
+                    NetDataWriter beacon = NetExtensions.CreateMessage(InfiniminerMessage.SetBeacon);
+                    beacon.Put(bPair.Key + Vector3.UnitY);
+                    beacon.Put(bPair.Value.ID);
+                    beacon.Put((byte)bPair.Value.Team);
+                    player.Peer.Send(beacon, NetChannel.World);
+                }
+            }
+            SendServerMessage("SERVER: A NEW MAP WAS LOADED.");
+        }
+
+        // Teleporters, beacons and home bases are found from the blocks of a loaded world.
+        void RebuildBlockTracking()
+        {
+            lavaBlockCount = 0;
             foreach (List<(int x, int y, int z)> network in teleporters.Values)
                 network.Clear();
             beaconList.Clear();
@@ -551,23 +576,10 @@ namespace Infiniminer
                                 homeBases[team] = (x, y, z);
                                 beaconList[new Vector3(x, y, z)] = new Beacon { ID = "HOME", Team = team };
                                 break;
+                            case BlockType.Lava:
+                                lavaBlockCount++;
+                                break;
                         }
-
-            foreach (ServerPlayer player in playerList.Values.ToList())
-            {
-                // Nobody should end up inside the new map's blocks: everyone respawns.
-                KillPlayer(player, "");
-                SendCurrentMap(player.Peer);
-                foreach (KeyValuePair<Vector3, Beacon> bPair in beaconList)
-                {
-                    NetDataWriter beacon = NetExtensions.CreateMessage(InfiniminerMessage.SetBeacon);
-                    beacon.Put(bPair.Key + Vector3.UnitY);
-                    beacon.Put(bPair.Value.ID);
-                    beacon.Put((byte)bPair.Value.Team);
-                    player.Peer.Send(beacon, NetChannel.World);
-                }
-            }
-            SendServerMessage("SERVER: A NEW MAP WAS LOADED.");
         }
 
         readonly Dictionary<PlayerTeam, List<(int x, int y, int z)>> teleporters = new Dictionary<PlayerTeam, List<(int x, int y, int z)>>
@@ -644,13 +656,8 @@ namespace Infiniminer
                 lavaBlockCount += 1;
         }
 
-        // Generates the world and starts listening. Returns false if the port could not be opened.
-        public bool Initialize()
+        void GenerateWorld()
         {
-            // Load the ban-list.
-            banList = LoadBanList();
-
-            // Create our block world, translating the coordinates out of the cave generator (where Z points down)
             BlockType[, ,] worldData = CaveGenerator.GenerateCaveSystem(MAPSIZE, config.IncludeLava, config.OreFactor);
             blockList = new BlockType[MAPSIZE, MAPSIZE, MAPSIZE];
             blockCreatorTeam = new PlayerTeam[MAPSIZE, MAPSIZE, MAPSIZE];
@@ -668,6 +675,85 @@ namespace Infiniminer
                 AddHomeBase(MAPSIZE - 6, MAPSIZE - 6, PlayerTeam.Red);
                 AddHomeBase(5, 5, PlayerTeam.Blue);
             }
+        }
+
+        // Loads world.sav if it fits this server. Returns false (and the server makes a new world) otherwise.
+        bool ContinueSavedWorld()
+        {
+            string path = DataPath(WorldFile);
+            if (!File.Exists(path))
+                return false;
+            WorldState saved;
+            try
+            {
+                saved = WorldSave.Load(path);
+            }
+            catch (Exception e)
+            {
+                ConsoleWrite("COULD NOT READ THE SAVED WORLD (" + e.Message + "); STARTING A NEW ONE");
+                return false;
+            }
+            if (saved.MapSize != MAPSIZE)
+            {
+                ConsoleWrite("THE SAVED WORLD IS " + saved.MapSize + "X" + saved.MapSize + "; STARTING A NEW " + MAPSIZE + "X" + MAPSIZE + " ONE");
+                return false;
+            }
+            blockList = saved.Blocks;
+            blockCreatorTeam = saved.Builders;
+            teamCashRed = saved.CashRed;
+            teamCashBlue = saved.CashBlue;
+            teamOreRed = saved.OreRed;
+            teamOreBlue = saved.OreBlue;
+            savedSecondsLeft = saved.SecondsLeft;
+            overtime = saved.Overtime;
+            RebuildBlockTracking();
+            ConsoleWrite("CONTINUING THE SAVED WORLD (RED $" + teamCashRed + ", BLUE $" + teamCashBlue + ")");
+            return true;
+        }
+
+        int savedSecondsLeft = -1;
+
+        public WorldState CaptureWorld()
+        {
+            return new WorldState
+            {
+                MapSize = MAPSIZE,
+                Blocks = blockList,
+                Builders = blockCreatorTeam,
+                CashRed = teamCashRed,
+                CashBlue = teamCashBlue,
+                OreRed = teamOreRed,
+                OreBlue = teamOreBlue,
+                SecondsLeft = double.IsPositiveInfinity(matchEndTime) ? -1 : (int)Math.Max(0, Math.Ceiling(matchEndTime - Now)),
+                Overtime = overtime,
+            };
+        }
+
+        public void SaveWorld()
+        {
+            try
+            {
+                WorldSave.Save(DataPath(WorldFile), CaptureWorld());
+                lastWorldSave = DateTime.Now;
+            }
+            catch (Exception e)
+            {
+                ConsoleWrite("ERROR: could not save the world: " + e.Message);
+            }
+        }
+
+        // Generates the world and starts listening. Returns false if the port could not be opened.
+        public bool Initialize()
+        {
+            // Load the ban-list.
+            banList = LoadBanList();
+
+            // With "persist", carry on with the saved world if there is one (of this size).
+            bool continued = config.Persist && ContinueSavedWorld();
+
+            // Create our block world, translating the coordinates out of the cave generator (where Z points down)
+            if (!continued)
+                GenerateWorld();
 
             // Initialize the server.
             listener = new EventBasedNetListener();
@@ -703,10 +789,13 @@ namespace Infiniminer
                 PortForward.Start();
             }
 
-            // Calculate initial lava flows.
-            ConsoleWrite("CALCULATING INITIAL LAVA FLOWS");
-            for (int i = 0; i < MAPSIZE * 2; i++)
-                DoLavaStuff();
+            // Calculate initial lava flows (a continued world's lava has already flowed).
+            if (!continued)
+            {
+                ConsoleWrite("CALCULATING INITIAL LAVA FLOWS");
+                for (int i = 0; i < MAPSIZE * 2; i++)
+                    DoLavaStuff();
+            }
             ConsoleWrite("TOTAL LAVA BLOCKS = " + lavaBlockCount);
 
             // Send the initial server list update.
@@ -714,8 +803,11 @@ namespace Infiniminer
 
             lastFlowCalc = DateTime.Now;
             SetBotCount(config.Bots);
-            if (config.TimeLimitMinutes > 0)
+            if (continued && savedSecondsLeft >= 0)
+                matchEndTime = Now + savedSecondsLeft;
+            else if (config.TimeLimitMinutes > 0)
                 matchEndTime = Now + config.TimeLimitMinutes * 60;
+            lastWorldSave = DateTime.Now;
             ConsoleWrite("SERVER READY");
             return true;
         }
@@ -777,6 +869,10 @@ namespace Infiniminer
                 lastFlowCalc = DateTime.Now;
             }
 
+            // Keep the saved world up to date, in case the server stops without warning.
+            if (config.Persist && !restartTriggered && (DateTime.Now - lastWorldSave).TotalSeconds > WorldSaveInterval)
+                SaveWorld();
+
             // Is the game over?
             if (winningTeam != PlayerTeam.None && !restartTriggered)
             {
@@ -788,7 +884,8 @@ namespace Infiniminer
             // Restart the server?
             if (restartTriggered && DateTime.Now > restartTime)
             {
-                SaveLevel("autosave_" + (UInt64)DateTime.Now.ToBinary() + ".lvl");
+                if (config.ArchiveMatches)
+                    SaveLevel("autosave_" + (UInt64)DateTime.Now.ToBinary() + ".lvl");
                 Shutdown("The server is restarting.");
                 return false;
             }
@@ -805,6 +902,24 @@ namespace Infiniminer
             PortForward = null;
             if (netServer == null || !netServer.IsRunning)
                 return;
+
+            // With "persist", the world is kept for next time, unless the match is over (or a restart was asked
+            // for), in which case the next start makes a new one.
+            if (config.Persist)
+            {
+                if (restartTriggered)
+                {
+                    try
+                    {
+                        File.Delete(DataPath(WorldFile));
+                    }
+                    catch (IOException)
+                    {
+                    }
+                }
+                else
+                    SaveWorld();
+            }
             byte[] reasonData = NetExtensions.StringPayload(reason).CopyData();
             netServer.DisconnectAll(reasonData, 0, reasonData.Length);
             netServer.Stop();

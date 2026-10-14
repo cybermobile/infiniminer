@@ -59,3 +59,7 @@ botskill = normal
 # Ask your router to forward the server's UDP port (UPnP), so players on the internet can join. If the
 # router has UPnP switched off, forward the port by hand instead. The console says which happened.
 upnp = false
+
+# Keep the world (and the match score and clock) in world.sav, so stopping and starting the server carries
+# on where it was. Saved every two minutes and on shutdown; a new world is made once a match ends.
+persist = false

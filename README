@@ -22,7 +22,8 @@ shader compiler, Visual Studio or Wine is needed on any platform.
 
 No separate server is needed to play: [ HOST A GAME ] at the top of the server list starts one inside the
 game (pick the world size, player limit, time limit and so on), and players on your network see it in
-their server list. The in-game menu's END GAME stops it. A dedicated server is still the way to run a game
+their server list. With KEEP WORLD on, ending the game saves it, and HOST GAME offers to CONTINUE it next
+time (or start a NEW WORLD). Dedicated servers do the same with "persist = true". The in-game menu's END GAME stops it. A dedicated server is still the way to run a game
 that outlives your session.
 
 To let friends on the internet join a game you host, set INTERNET PLAYERS to OPEN ROUTER (UPNP) in HOST

@@ -51,7 +51,24 @@ namespace Infiniminer.States
         {
             base.OnEnter(oldState);
             Rebuild();
-            selected = rows.Count - 2;  // START GAME
+            selected = rows.FindIndex(r => r.Activate == StartGame);  // START (or CONTINUE) GAME
+        }
+
+        string SavedWorldPath
+        {
+            get { return Path.Combine(Game.DataDirectory, InfiniminerServer.WorldFile); }
+        }
+
+        // The world a previous hosted game left, if it will be continued (same size, keeping worlds).
+        WorldState SavedWorld
+        {
+            get
+            {
+                if (!Settings.HostKeepWorld)
+                    return null;
+                WorldState saved = WorldSave.Peek(SavedWorldPath);
+                return saved != null && saved.MapSize == Settings.HostMapSize ? saved : null;
+            }
         }
 
         static string OnOff(bool value)
@@ -63,6 +80,7 @@ namespace Infiniminer.States
         {
             Game.SaveSettings();
             _P.PlaySound(InfiniminerSound.ClickLow);
+            Rebuild();      // whether there is a saved world to continue depends on the settings
         }
 
         protected override void BuildRows()
@@ -143,11 +161,41 @@ namespace Infiniminer.States
                 },
                 new Row
                 {
+                    Label = "KEEP WORLD",
+                    Value = () => Settings.HostKeepWorld ? "SAVE IT FOR NEXT TIME" : "NEW EVERY TIME",
+                    Change = direction => { Settings.HostKeepWorld = !Settings.HostKeepWorld; Changed(); },
+                },
+                new Row
+                {
                     Label = "SANDBOX (FREE BUILDING)",
                     Value = () => OnOff(Settings.HostSandbox),
                     Change = direction => { Settings.HostSandbox = !Settings.HostSandbox; Changed(); },
                 },
-                new Row { Label = "START GAME", Activate = StartGame },
+                new Row
+                {
+                    Label = SavedWorld != null ? "CONTINUE GAME" : "START GAME",
+                    Value = () => SavedWorld is WorldState saved
+                        ? saved.MapSize + "X" + saved.MapSize + ", RED $" + saved.CashRed + " BLUE $" + saved.CashBlue
+                        : "",
+                    Activate = StartGame,
+                },
+                new Row
+                {
+                    Label = "NEW WORLD",
+                    Value = () => "DISCARDS THE SAVED ONE",
+                    Enabled = () => SavedWorld != null,
+                    Activate = () =>
+                    {
+                        try
+                        {
+                            File.Delete(SavedWorldPath);
+                        }
+                        catch (IOException)
+                        {
+                        }
+                        StartGame();
+                    },
+                },
                 new Row { Label = "BACK", Activate = Back },
             };
         }

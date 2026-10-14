@@ -99,4 +99,4 @@ The original server trusted almost everything the client said.
 
 ## 12. More to play with
 - [x] Bot difficulty: easy, normal or hard (`botskill`, the console command, COMPUTER SKILL in HOST GAME)
-- [ ] Keep the world between sessions (until a match ends)
+- [x] Keep the world between sessions until a match ends (`persist`, KEEP WORLD and CONTINUE GAME in HOST GAME)

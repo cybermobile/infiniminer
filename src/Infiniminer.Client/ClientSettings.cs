@@ -61,6 +61,7 @@ namespace Infiniminer
         public int HostBots = 2;            // computer players
         public BotSkill HostBotSkill = BotSkill.Normal;
         public bool HostInternet = false;   // forward the port on the router (UPnP)
+        public bool HostKeepWorld = true;   // save the world when the game ends, to continue it next time
         public Dictionary<GameAction, Keys> KeyBindings = DefaultKeyBindings();
 
         public const int MinSensitivity = 1, MaxSensitivity = 20;
@@ -138,6 +139,8 @@ namespace Infiniminer
                 Bots = HostBots,
                 BotSkill = HostBotSkill,
                 Upnp = HostInternet,
+                Persist = HostKeepWorld,
+                ArchiveMatches = false,     // no pile of old maps in the player's settings folder
                 // Open to the internet, the game is also announced on the public server list, if one is set.
                 PublicServer = HostInternet && ServerListUrl != "",
                 ServerListUrl = ServerListUrl,
@@ -208,6 +211,7 @@ namespace Infiniminer
             if (Enum.TryParse(dataFile.GetString("host_botskill", ""), true, out BotSkill skill) && Enum.IsDefined(skill))
                 settings.HostBotSkill = skill;
             settings.HostInternet = dataFile.GetBool("host_internet", settings.HostInternet);
+            settings.HostKeepWorld = dataFile.GetBool("host_keepworld", settings.HostKeepWorld);
             foreach (GameAction action in Enum.GetValues<GameAction>())
                 if (Enum.TryParse(dataFile.GetString(ConfigKey(action), ""), true, out Keys key) && key != Keys.None)
                     settings.Bind(action, key);
@@ -273,6 +277,7 @@ namespace Infiniminer
             Line("host_bots = " + HostBots.ToString(CultureInfo.InvariantCulture));
             Line("host_botskill = " + HostBotSkill.ToString().ToLowerInvariant());
             Line("host_internet = " + Bool(HostInternet));
+            Line("host_keepworld = " + Bool(HostKeepWorld));
             Line();
             Line("# Key bindings (names from https://docs.monogame.net/api/Microsoft.Xna.Framework.Input.Keys.html).");
             foreach (GameAction action in Enum.GetValues<GameAction>())
