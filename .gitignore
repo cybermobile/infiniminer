@@ -18,3 +18,7 @@ src/**/bin/
 src/**/obj/
 *.lvl
 crash.log
+
+# Packaging output
+out/
+dist/

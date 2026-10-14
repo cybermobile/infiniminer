@@ -1,0 +1,7 @@
+.git
+code
+images
+out
+dist
+src/**/bin
+src/**/obj

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Infiniminer
+Comment=Team-based mining and building game
+Exec="__INSTALL_DIR__/Infiniminer"
+Path=__INSTALL_DIR__
+Icon=__INSTALL_DIR__/infiniminer.png
+Terminal=false
+Categories=Game;

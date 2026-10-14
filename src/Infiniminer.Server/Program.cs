@@ -58,7 +58,7 @@ namespace Infiniminer.Server
 
             StartConsoleReader();
 
-            string dataDirectory = DatafileLoader.ResolveDataDirectory("server.config.txt");
+            string dataDirectory = DatafileLoader.ResolveDataDirectory("server.config.txt", "banlist.txt");
             Console.WriteLine("Type 'help' for a list of server commands.");
 
             bool restartServer = true;

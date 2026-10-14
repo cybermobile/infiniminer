@@ -52,7 +52,11 @@ The original server trusted almost everything the client said.
 ## 7. Admin and distribution
 - [x] Kick/ban by name, unban, and remote admin from chat (`adminpassword`, `/login`)
 - [x] `load` resends the map to connected players (map files are restricted to plain names)
-- [ ] Packaging: signed macOS .app, Linux AppImage/Flatpak, Windows installer, server Docker image
+- [x] Packaging (`packaging/package.sh`): Windows installer and portable zip, macOS .app (ad-hoc signed),
+      Linux tarball with a menu entry script, Docker images for the server and the server list
+- [x] Installed copies keep settings, bans and saves in a per-user folder
+- [x] CI packages every platform on each push; version tags publish a GitHub release and the images
+- [ ] Later: notarised macOS builds and a signed Windows installer (need paid certificates), Flatpak
 
 ## 8. Code health
 - [ ] Break up `PropertyBag`, type-safe game states

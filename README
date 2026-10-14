@@ -23,19 +23,30 @@ shader compiler, Visual Studio or Wine is needed on any platform.
 The client finds servers on your LAN automatically. Use [ DIRECT CONNECT ] for anything else; it accepts
 an IP address or host name, optionally followed by ":port".
 
-To build standalone, self-contained copies (no .NET install needed by players), pick a runtime:
+To build release packages (self-contained: players don't need .NET installed) into dist/:
 
-    dotnet publish src/Infiniminer.Client -c Release -r win-x64   --self-contained -o out/Infiniminer
-    dotnet publish src/Infiniminer.Server -c Release -r win-x64   --self-contained -o out/InfiniminerServer
+    packaging/package.sh win-x64      # portable zip + installer (the installer needs NSIS: apt install nsis)
+    packaging/package.sh linux-x64    # tar.gz; run install-desktop-entry.sh inside it to add a menu entry
+    packaging/package.sh osx-arm64    # zip with Infiniminer.app (Apple Silicon); osx-x64 for Intel Macs.
+                                      # Build these on a Mac so the app gets signed.
 
-    Runtime identifiers: win-x64, osx-arm64 (Apple Silicon), osx-x64 (Intel Mac), linux-x64, linux-arm64
+Each also builds the server list service for that platform. GitHub Actions (.github/workflows/build.yml)
+builds and tests on all three operating systems, packages every platform and builds the Docker images on
+each push. Pushing a version tag (e.g. v1.9.0) also creates a GitHub release with the packages attached
+and publishes the images to ghcr.io.
 
-GitHub Actions (.github/workflows/build.yml) builds and tests on all three operating systems and uploads
-these builds as artifacts.
+Docker images for the dedicated server and the server list (see the top of each file for options):
+
+    docker build -f docker/server.Dockerfile -t infiniminer-server .
+    docker run -it -p 5565:5565/udp -v infiniminer:/data infiniminer-server
+
+    docker build -f docker/serverlist.Dockerfile -t infiniminer-serverlist .
+    docker run -p 8080:8080 infiniminer-serverlist
 
 Linux notes: the game needs OpenGL drivers. Pasting into the direct connect box (Ctrl-V) needs the
 xsel package.
-macOS notes: downloaded builds are unsigned; run `xattr -dr com.apple.quarantine <folder>` once.
+macOS notes: the app is signed ad hoc, not by an Apple developer account, so the first time, right-click
+Infiniminer.app and choose Open (or run `xattr -dr com.apple.quarantine Infiniminer.app`).
 
 
 PUBLIC SERVER LIST
@@ -60,9 +71,16 @@ Game settings can be changed in the OPTIONS menu (on the server browser, or Esca
 resolution, fullscreen, interface scale, field of view, mouse sensitivity, invert mouse, volume, bloom,
 colour-blind mode, FPS counter and key bindings. The window can also be resized freely; menus scale to fit it.
 
-Settings are saved in client.config.txt. It and server.config.txt (in bin/, copied next to the
-executables on build) are read from the current directory if present, otherwise from next to the
-executable. Other new settings:
+Settings are saved in client.config.txt; the server reads server.config.txt and keeps banlist.txt and
+saved maps beside it. The defaults are in bin/ and are copied next to the executables on build. These
+files are used from, in order:
+  1. the current directory, if it has the config file;
+  2. the folder of the executable, if it can be written to (an unzipped download or a dev build);
+  3. otherwise (an installed copy) a per-user folder, seeded with the defaults on first run:
+     %APPDATA%\Infiniminer on Windows, ~/Library/Application Support/Infiniminer on macOS,
+     ~/.config/Infiniminer on Linux.
+
+Other new settings:
 
   port        (server) UDP port to listen on, default 5565. LAN discovery only looks on 5565.
   serverlist  (client and server) URL of a public server list (see PUBLIC SERVER LIST). Empty by

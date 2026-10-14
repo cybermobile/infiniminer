@@ -67,13 +67,70 @@ namespace Infiniminer
             return dataDict.TryGetValue(key, out string value) && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float result) ? result : defaultValue;
         }
 
-        // Config files are looked up in the working directory first (so a server can be run from a data
-        // directory), then next to the executable (so `dotnet run` and double-clicking both work).
-        public static string ResolveDataDirectory(string configFileName)
+        // Where the config file, and everything else the game writes, lives:
+        //  1. the working directory, if it has the config file (a server run from a data folder, dev runs);
+        //  2. next to the executable, if that folder can be written (an unzipped download stays portable);
+        //  3. otherwise a per-user folder (installed under Program Files, or inside a macOS .app bundle),
+        //     seeded with the default files shipped next to the executable.
+        public static string ResolveDataDirectory(string configFileName, params string[] otherSeedFiles)
         {
-            if (File.Exists(Path.Combine(Environment.CurrentDirectory, configFileName)))
-                return Environment.CurrentDirectory;
-            return AppContext.BaseDirectory;
+            return ResolveDataDirectory(Environment.CurrentDirectory, AppContext.BaseDirectory, UserDataDirectory(), IsWritable,
+                configFileName, otherSeedFiles);
+        }
+
+        public static string ResolveDataDirectory(string currentDirectory, string baseDirectory, string userDirectory,
+            Func<string, bool> isWritable, string configFileName, params string[] otherSeedFiles)
+        {
+            if (File.Exists(Path.Combine(currentDirectory, configFileName)))
+                return currentDirectory;
+            if (!IsInsideAppBundle(baseDirectory) && isWritable(baseDirectory))
+                return baseDirectory;
+
+            try
+            {
+                Directory.CreateDirectory(userDirectory);
+                foreach (string file in otherSeedFiles.Prepend(configFileName))
+                {
+                    string source = Path.Combine(baseDirectory, file), target = Path.Combine(userDirectory, file);
+                    if (File.Exists(source) && !File.Exists(target))
+                        File.Copy(source, target);
+                }
+                return userDirectory;
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                // Nowhere to write: run from the shipped defaults, settings just won't be saved.
+                return baseDirectory;
+            }
+        }
+
+        // %APPDATA%\Infiniminer on Windows, ~/Library/Application Support/Infiniminer on macOS,
+        // $XDG_CONFIG_HOME/Infiniminer (usually ~/.config/Infiniminer) on Linux.
+        public static string UserDataDirectory()
+        {
+            if (OperatingSystem.IsMacOS())
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support", "Infiniminer");
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify), "Infiniminer");
+        }
+
+        // Writing into a signed .app bundle would break its signature even when it is allowed.
+        static bool IsInsideAppBundle(string directory)
+        {
+            return directory.Replace('\\', '/').Contains(".app/Contents/", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool IsWritable(string directory)
+        {
+            try
+            {
+                string probe = Path.Combine(directory, ".write-test-" + Guid.NewGuid().ToString("N"));
+                using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose)) { }
+                return true;
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                return false;
+            }
         }
     }
 

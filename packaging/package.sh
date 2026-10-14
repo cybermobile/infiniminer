@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Builds the release packages for one platform into dist/:
+#
+#   packaging/package.sh <rid> [version]
+#
+#   win-x64   Infiniminer-<version>-win-x64.zip (portable) and Infiniminer-<version>-win-x64-setup.exe
+#             (the installer needs makensis: `apt install nsis`)
+#   osx-*     Infiniminer-<version>-<rid>.zip holding Infiniminer.app and the server. Run this on macOS:
+#             the app has to be signed there, and unsigned arm64 code won't start on Apple Silicon.
+#   linux-*   Infiniminer-<version>-<rid>.tar.gz
+#
+# Every platform also gets InfiniminerServerList-<version>-<rid>, the public server list service.
+# Everything is self-contained: players don't need .NET installed.
+set -euo pipefail
+
+rid=${1:?usage: packaging/package.sh <rid> [version]}
+root=$(cd "$(dirname "$0")/.." && pwd)
+version=${2:-$(sed -n 's/.*Version = "v\([0-9.]*\)".*/\1/p' "$root/src/Infiniminer.Shared/GameTypes.cs")}
+work=$root/out/$rid
+dist=$root/dist
+name=Infiniminer-$version-$rid
+listName=InfiniminerServerList-$version-$rid
+rm -rf "$work"
+mkdir -p "$work" "$dist"
+
+publish() { # project, output folder
+    echo "Publishing $1 for $rid..."
+    dotnet publish "$root/src/$1" -c Release -r "$rid" --self-contained -p:Version="$version" -p:DebugType=none \
+        -o "$2" --nologo -v quiet
+}
+
+docs() { # folder
+    cp "$root/README" "$1/README.txt"
+    cp "$root/LICENSE" "$1/LICENSE.txt"
+}
+
+zip_folder() { # parent folder, folder name, zip file
+    rm -f "$3"
+    if command -v ditto > /dev/null; then
+        ditto -c -k --keepParent "$1/$2" "$3"    # keeps the app bundle's signature and permissions intact
+    else
+        (cd "$1" && zip -qry "$3" "$2")
+    fi
+}
+
+tar_folder() { # parent folder, folder name, archive
+    tar -C "$1" -czf "$3" "$2"
+}
+
+case $rid in
+    win-*)
+        # The client and server share the runtime, so they ship in one folder as the original did.
+        game=$work/Infiniminer
+        publish Infiniminer.Client "$game"
+        publish Infiniminer.Server "$game"
+        docs "$game"
+        cp "$root/code/InfiniminerClient/Game.ico" "$game/Game.ico"
+        zip_folder "$work" Infiniminer "$dist/$name.zip"
+        if command -v makensis > /dev/null; then
+            makensis -V2 -DVERSION="$version" -DSRCDIR="$game" -DOUTFILE="$dist/$name-setup.exe" \
+                "$root/packaging/windows/infiniminer.nsi"
+        else
+            echo "makensis not found; skipping the installer." >&2
+        fi
+        ;;
+
+    osx-*)
+        folder=$work/Infiniminer
+        app=$folder/Infiniminer.app
+        mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+        publish Infiniminer.Client "$app/Contents/MacOS"
+        cp "$root/packaging/macos/Infiniminer.icns" "$app/Contents/Resources/"
+        sed "s/__VERSION__/$version/g" "$root/packaging/macos/Info.plist" > "$app/Contents/Info.plist"
+        publish Infiniminer.Server "$folder/Server"
+        docs "$folder"
+        if command -v codesign > /dev/null; then
+            # Ad-hoc signatures: enough for the code to run, though Gatekeeper still asks on first launch.
+            codesign --force --deep --sign - "$app"
+            codesign --force --sign - "$folder/Server/InfiniminerServer"
+        else
+            echo "codesign not found (not on macOS?); the app is unsigned and won't start on Apple Silicon." >&2
+        fi
+        zip_folder "$work" Infiniminer "$dist/$name.zip"
+        ;;
+
+    linux-*)
+        game=$work/Infiniminer
+        publish Infiniminer.Client "$game"
+        publish Infiniminer.Server "$game"
+        docs "$game"
+        cp "$root/packaging/linux/infiniminer.png" "$root/packaging/linux/infiniminer.desktop" \
+            "$root/packaging/linux/install-desktop-entry.sh" "$game/"
+        tar_folder "$work" Infiniminer "$dist/$name.tar.gz"
+        ;;
+
+    *)
+        echo "Unknown runtime identifier: $rid" >&2
+        exit 1
+        ;;
+esac
+
+list=$work/InfiniminerServerList
+publish Infiniminer.ServerList "$list"
+docs "$list"
+case $rid in
+    linux-*) tar_folder "$work" InfiniminerServerList "$dist/$listName.tar.gz" ;;
+    *) zip_folder "$work" InfiniminerServerList "$dist/$listName.zip" ;;
+esac
+
+echo "Packages for $rid:"
+ls -l "$dist" | grep -- "-$version-$rid" || true

@@ -2,6 +2,8 @@ name: Build
 
 on:
   push:
+    branches: ['**']
+    tags: ['v*']
   pull_request:
 
 jobs:
@@ -22,24 +24,88 @@ jobs:
       - name: Test
         run: dotnet test src/Infiniminer.sln -c Release --no-build
 
-  publish:
-    name: Publish ${{ matrix.rid }}
+  package:
+    name: Package ${{ matrix.rid }}
     needs: test
     strategy:
+      fail-fast: false
       matrix:
-        rid: [win-x64, osx-arm64, osx-x64, linux-x64]
-    runs-on: ubuntu-latest
+        include:
+          - { rid: win-x64, os: ubuntu-latest }
+          - { rid: linux-x64, os: ubuntu-latest }
+          # macOS packages are built on macOS so the app can be signed.
+          - { rid: osx-arm64, os: macos-latest }
+          - { rid: osx-x64, os: macos-latest }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - name: Publish client and server
+      - name: Install NSIS
+        if: startsWith(matrix.rid, 'win-')
+        run: sudo apt-get update && sudo apt-get install -y nsis
+      - name: Package
         run: |
-          dotnet publish src/Infiniminer.Client -c Release -r ${{ matrix.rid }} --self-contained -o out/Infiniminer
-          dotnet publish src/Infiniminer.Server -c Release -r ${{ matrix.rid }} --self-contained -o out/InfiniminerServer
-          dotnet publish src/Infiniminer.ServerList -c Release -r ${{ matrix.rid }} --self-contained -o out/InfiniminerServerList
+          # A v1.2.3 tag names the release; otherwise the protocol version is used.
+          version=""
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
+          packaging/package.sh ${{ matrix.rid }} $version
       - uses: actions/upload-artifact@v4
         with:
           name: infiniminer-${{ matrix.rid }}
-          path: out/
+          path: dist/*
+
+  docker:
+    name: Docker image (${{ matrix.image }})
+    needs: test
+    strategy:
+      matrix:
+        image: [server, serverlist]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/infiniminer-${{ matrix.image }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+      - name: Log in to the GitHub container registry
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Images are built on every push and published for version tags.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/${{ matrix.image }}.Dockerfile
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [package, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
