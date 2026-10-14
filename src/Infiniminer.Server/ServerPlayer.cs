@@ -39,6 +39,8 @@ namespace Infiniminer
         public Dictionary<PlayerTools, RateLimiter> ToolLimiters = new Dictionary<PlayerTools, RateLimiter>();
         public double LastCorrectionLog = double.MinValue;
         public (int x, int y, int z)? OnTeleporter;   // the teleporter the player is standing on, if any
+        public bool IsAdmin = false;
+        public readonly RateLimiter LoginLimiter = new RateLimiter(3, 1 / 20f);   // three tries, then one every 20 s
 
         public void SetClass(PlayerClass playerClass)
         {

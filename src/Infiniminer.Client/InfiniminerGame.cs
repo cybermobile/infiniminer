@@ -325,13 +325,13 @@ namespace Infiniminer
                         int size = msgBuffer.GetUShort();
                         if (!GameConstants.MapSizes.Contains(size))
                             throw new InvalidDataException("unsupported map size " + size);
-                        if (size != propertyBag.blockEngine.MAPSIZE)
-                        {
-                            propertyBag.blockEngine.Dispose();
-                            propertyBag.blockEngine = new BlockEngine(this, size);
-                        }
+                        // A fresh world: on joining, or when the server loads a different map.
+                        propertyBag.blockEngine.Dispose();
+                        propertyBag.blockEngine = new BlockEngine(this, size);
                         propertyBag.mapSize = size;
                         propertyBag.mapLoadProgress = new bool[size, size];
+                        propertyBag.downloadComplete = false;
+                        propertyBag.beaconList.Clear();
                     }
                     break;
 
@@ -360,7 +360,8 @@ namespace Infiniminer
                         if (downloadComplete && !propertyBag.downloadComplete)
                         {
                             propertyBag.downloadComplete = true;
-                            deferredState = "Infiniminer.States.TeamSelectionState";
+                            if (CurrentStateType == "Infiniminer.States.LoadingState")
+                                deferredState = "Infiniminer.States.TeamSelectionState";
                             TitleMusic.Stop();
                             propertyBag.blockEngine.DownloadComplete();
                         }

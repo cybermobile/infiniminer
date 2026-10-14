@@ -10,7 +10,7 @@ namespace Infiniminer.Tests
     [Collection("World generation")]
     public class MatchTests
     {
-        sealed class TestServer : IDisposable
+        internal sealed class TestServer : IDisposable
         {
             public readonly InfiniminerServer Server;
             readonly Thread thread;

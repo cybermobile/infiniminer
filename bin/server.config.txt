@@ -44,3 +44,7 @@ autobalance = false
 # The size of the world cube: 64 (the original), 96 or 128. Bigger worlds have proportionally more ore,
 # gold and diamonds.
 mapsize = 64
+
+# Players who type "/login <password>" in chat can run any console command from chat (e.g. /kick Name).
+# Leave empty to disable remote admin.
+adminpassword = 

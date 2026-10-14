@@ -144,9 +144,81 @@ namespace Infiniminer
             });
         }
 
+        // While running a command an admin typed in chat, its output is sent back to them as well.
+        ServerPlayer commandReplyTo = null;
+
         public void ConsoleWrite(string text)
         {
             Log(text);
+            if (commandReplyTo != null)
+            {
+                NetDataWriter reply = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
+                reply.Put((byte)ChatMessageType.SayAll);
+                reply.Put(TextUtil.Sanitize(text));
+                commandReplyTo.Peer.Send(reply, NetChannel.ReliableInOrder3);
+            }
+        }
+
+        // Chat messages starting with "/" are commands: /login <password>, then any console command.
+        void HandleChatCommand(ServerPlayer player, string command)
+        {
+            string[] args = command.Substring(1).Split(' ', 2);
+            if (args[0].ToLowerInvariant() == "login")
+            {
+                commandReplyTo = player;
+                try
+                {
+                    if (config.AdminPassword == "")
+                        ConsoleWrite("ADMIN: this server has no admin password.");
+                    else if (!player.LoginLimiter.TryTake(Now))
+                        ConsoleWrite("ADMIN: too many attempts, wait a little.");
+                    else if (args.Length == 2 && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                        System.Text.Encoding.UTF8.GetBytes(args[1]), System.Text.Encoding.UTF8.GetBytes(config.AdminPassword)))
+                    {
+                        player.IsAdmin = true;
+                        ConsoleWrite("ADMIN: " + player.Handle + " logged in. Type /help for commands.");
+                    }
+                    else
+                        ConsoleWrite("ADMIN: wrong password.");
+                }
+                finally
+                {
+                    commandReplyTo = null;
+                }
+                return;
+            }
+
+            if (!player.IsAdmin)
+            {
+                commandReplyTo = player;
+                ConsoleWrite("ADMIN: log in first with /login <password>.");
+                commandReplyTo = null;
+                return;
+            }
+
+            ConsoleWrite("ADMIN: " + player.Handle + " ran: " + command.Substring(1));
+            commandReplyTo = player;
+            try
+            {
+                ConsoleProcessInput(command.Substring(1));
+            }
+            finally
+            {
+                commandReplyTo = null;
+            }
+        }
+
+        // Map files are plain names in the server's folder, so commands can't touch other files.
+        static bool IsSafeFileName(string filename)
+        {
+            return filename != "" && Path.GetFileName(filename) == filename && !filename.StartsWith('.')
+                && filename.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+        }
+
+        // Players matching an IP address or a name (names are matched ignoring case).
+        List<ServerPlayer> FindPlayers(string target)
+        {
+            return playerList.Values.Where(p => p.IP == target || string.Equals(p.Handle, target, StringComparison.OrdinalIgnoreCase)).ToList();
         }
 
         string DataPath(string filename)
@@ -180,14 +252,11 @@ namespace Infiniminer
             }
         }
 
-        public void KickPlayer(string ip)
+        public void KickPlayer(string target)
         {
-            List<ServerPlayer> playersToKick = new List<ServerPlayer>();
-            foreach (ServerPlayer p in playerList.Values)
-            {
-                if (p.IP == ip)
-                    playersToKick.Add(p);
-            }
+            List<ServerPlayer> playersToKick = FindPlayers(target);
+            if (playersToKick.Count == 0)
+                ConsoleWrite("ERROR: no player with that name or IP");
             foreach (ServerPlayer p in playersToKick)
             {
                 p.Kicked = true;
@@ -222,8 +291,9 @@ namespace Infiniminer
                     {
                         ConsoleWrite("SERVER CONSOLE COMMANDS:");
                         ConsoleWrite(" players");
-                        ConsoleWrite(" kick <ip>");
-                        ConsoleWrite(" ban <ip>");
+                        ConsoleWrite(" kick <ip or name>");
+                        ConsoleWrite(" ban <ip or name>");
+                        ConsoleWrite(" unban <ip>");
                         ConsoleWrite(" say <message>");
                         ConsoleWrite(" tp <player name> <x> <y> <z>");
                         ConsoleWrite(" save <mapfile>");
@@ -249,18 +319,41 @@ namespace Infiniminer
 
                 case "kick":
                     {
-                        if (args.Length == 2)
-                            KickPlayer(args[1]);
+                        if (args.Length >= 2)
+                            KickPlayer(string.Join(" ", args[1..]));
                     }
                     break;
 
                 case "ban":
                     {
-                        if (args.Length == 2)
+                        // Ban by IP, or by the name of a connected player (which bans their IP).
+                        if (args.Length >= 2)
                         {
-                            KickPlayer(args[1]);
-                            BanPlayer(args[1]);
+                            string target = string.Join(" ", args[1..]);
+                            List<string> ips = FindPlayers(target).Select(p => p.IP).Distinct().ToList();
+                            if (ips.Count == 0 && System.Net.IPAddress.TryParse(target, out _))
+                                ips.Add(target);
+                            if (ips.Count == 0)
+                                ConsoleWrite("ERROR: no player with that name or IP");
+                            foreach (string ip in ips)
+                            {
+                                BanPlayer(ip);
+                                ConsoleWrite("BANNED: " + ip);
+                            }
+                            KickPlayer(target);
                         }
+                    }
+                    break;
+
+                case "unban":
+                    {
+                        if (args.Length == 2 && banList.Remove(args[1]))
+                        {
+                            SaveBanList(banList);
+                            ConsoleWrite("UNBANNED: " + args[1]);
+                        }
+                        else
+                            ConsoleWrite("ERROR: that IP is not banned");
                     }
                     break;
 
@@ -312,15 +405,22 @@ namespace Infiniminer
 
                 case "save":
                     {
-                        if (args.Length >= 2)
+                        if (args.Length >= 2 && IsSafeFileName(args[1]))
                             SaveLevel(args[1]);
+                        else
+                            ConsoleWrite("ERROR: give a plain file name, e.g. save mymap.lvl");
                     }
                     break;
 
                 case "load":
                     {
-                        if (args.Length >= 2)
-                            LoadLevel(args[1]);
+                        if (args.Length >= 2 && IsSafeFileName(args[1]))
+                        {
+                            if (LoadLevel(args[1]))
+                                ResendWorld();
+                        }
+                        else
+                            ConsoleWrite("ERROR: give a plain file name, e.g. load mymap.lvl");
                     }
                     break;
             }
@@ -342,8 +442,10 @@ namespace Infiniminer
             }
         }
 
-        public void LoadLevel(string filename)
+        public bool LoadLevel(string filename)
         {
+            BlockType[,,] newBlocks = new BlockType[MAPSIZE, MAPSIZE, MAPSIZE];
+            PlayerTeam[,,] newTeams = new PlayerTeam[MAPSIZE, MAPSIZE, MAPSIZE];
             try
             {
                 using StreamReader sr = new StreamReader(DataPath(filename));
@@ -352,22 +454,76 @@ namespace Infiniminer
                         for (int z = 0; z < MAPSIZE; z++)
                         {
                             string line = sr.ReadLine();
+                            if (line == null)
+                                throw new InvalidDataException("the file is for a smaller map");
                             string[] fileArgs = line.Split(',');
                             if (fileArgs.Length == 2)
                             {
-                                blockList[x, y, z] = (BlockType)int.Parse(fileArgs[0], CultureInfo.InvariantCulture);
-                                blockCreatorTeam[x, y, z] = (PlayerTeam)int.Parse(fileArgs[1], CultureInfo.InvariantCulture);
+                                BlockType blockType = (BlockType)int.Parse(fileArgs[0], CultureInfo.InvariantCulture);
+                                newBlocks[x, y, z] = blockType < BlockType.MAXIMUM ? blockType : BlockType.None;
+                                newTeams[x, y, z] = (PlayerTeam)int.Parse(fileArgs[1], CultureInfo.InvariantCulture);
                             }
                         }
             }
             catch (FileNotFoundException)
             {
                 ConsoleWrite("ERROR: File not found!");
+                return false;
             }
             catch (Exception e)
             {
                 ConsoleWrite("ERROR: could not load level: " + e.Message);
+                return false;
             }
+            blockList = newBlocks;
+            blockCreatorTeam = newTeams;
+            ConsoleWrite("LOADED " + filename);
+            return true;
+        }
+
+        // After a map is loaded: rebuild what we track about special blocks, and give everyone the new world.
+        void ResendWorld()
+        {
+            foreach (List<(int x, int y, int z)> network in teleporters.Values)
+                network.Clear();
+            beaconList.Clear();
+            beaconIDList.Clear();
+            homeBases.Clear();
+            for (int x = 0; x < MAPSIZE; x++)
+                for (int y = 0; y < MAPSIZE; y++)
+                    for (int z = 0; z < MAPSIZE; z++)
+                        switch (blockList[x, y, z])
+                        {
+                            case BlockType.Teleporter:
+                                teleporters[blockCreatorTeam[x, y, z]].Add((x, y, z));
+                                break;
+                            case BlockType.BeaconRed:
+                            case BlockType.BeaconBlue:
+                                beaconList[new Vector3(x, y, z)] = new Beacon { ID = GenerateBeaconID(), Team = blockList[x, y, z] == BlockType.BeaconRed ? PlayerTeam.Red : PlayerTeam.Blue };
+                                break;
+                            case BlockType.HomeRed:
+                            case BlockType.HomeBlue:
+                                PlayerTeam team = blockList[x, y, z] == BlockType.HomeRed ? PlayerTeam.Red : PlayerTeam.Blue;
+                                homeBases[team] = (x, y, z);
+                                beaconList[new Vector3(x, y, z)] = new Beacon { ID = "HOME", Team = team };
+                                break;
+                        }
+
+            foreach (ServerPlayer player in playerList.Values.ToList())
+            {
+                // Nobody should end up inside the new map's blocks: everyone respawns.
+                KillPlayer(player, "");
+                SendCurrentMap(player.Peer);
+                foreach (KeyValuePair<Vector3, Beacon> bPair in beaconList)
+                {
+                    NetDataWriter beacon = NetExtensions.CreateMessage(InfiniminerMessage.SetBeacon);
+                    beacon.Put(bPair.Key + Vector3.UnitY);
+                    beacon.Put(bPair.Value.ID);
+                    beacon.Put((byte)bPair.Value.Team);
+                    player.Peer.Send(beacon, NetChannel.World);
+                }
+            }
+            SendServerMessage("SERVER: A NEW MAP WAS LOADED.");
         }
 
         readonly Dictionary<PlayerTeam, List<(int x, int y, int z)>> teleporters = new Dictionary<PlayerTeam, List<(int x, int y, int z)>>
@@ -719,6 +875,11 @@ namespace Infiniminer
                             chatString = chatString.Substring(0, MaxChatLength);
                         if (chatString == "" || !player.ChatLimiter.TryTake(Now))
                             break;
+                        if (chatString.StartsWith('/'))
+                        {
+                            HandleChatCommand(player, chatString);
+                            break;
+                        }
                         ConsoleWrite("CHAT: (" + player.Handle + ") " + chatString);
 
                         // Append identifier information.

@@ -50,8 +50,8 @@ The original server trusted almost everything the client said.
 - [x] Colour-blind mode (Okabe-Ito team colours, [R]/[B] chat tags); team headings on the scoreboard
 
 ## 7. Admin and distribution
-- [ ] Ban by name, remote admin with a password
-- [ ] `load` resends the map to connected players
+- [x] Kick/ban by name, unban, and remote admin from chat (`adminpassword`, `/login`)
+- [x] `load` resends the map to connected players (map files are restricted to plain names)
 - [ ] Packaging: signed macOS .app, Linux AppImage/Flatpak, Windows installer, server Docker image
 
 ## 8. Code health
