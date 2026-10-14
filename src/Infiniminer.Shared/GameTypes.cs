@@ -112,6 +112,7 @@ namespace Infiniminer
         TriggerConstructionGunAnimation,
         SetBeacon,              // vector3 position, string text ("" means remove), byte team
         PlayerSetPosition,      // vector3 position, byte epoch, byte reason (PositionReason): the server moves the player
+        MatchInfo,              // int seconds left (-1: no time limit, 0: overtime), uint cash needed to win
     }
 
     public enum PositionReason : byte

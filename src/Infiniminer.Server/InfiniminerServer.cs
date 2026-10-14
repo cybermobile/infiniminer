@@ -31,6 +31,24 @@ namespace Infiniminer
         uint teamOreBlue = 0;
 
         PlayerTeam winningTeam = PlayerTeam.None;
+        double matchEndTime = double.PositiveInfinity;   // when the time limit runs out
+        bool overtime = false;                           // time ran out with the teams tied
+
+        // The cash a team needs to win, which can grow with the number of players.
+        public uint WinningCash
+        {
+            get { return config.WinningCashAmount + config.WinningCashPerPlayer * (uint)playerList.Count; }
+        }
+
+        int SecondsLeft
+        {
+            get
+            {
+                if (double.IsPositiveInfinity(matchEndTime))
+                    return -1;
+                return overtime ? 0 : (int)Math.Max(1, Math.Ceiling(matchEndTime - Now));
+            }
+        }
 
         // Server restarting variables.
         DateTime restartTime = DateTime.Now;
@@ -479,6 +497,8 @@ namespace Infiniminer
             PublicServerListUpdate();
 
             lastFlowCalc = DateTime.Now;
+            if (config.TimeLimitMinutes > 0)
+                matchEndTime = Now + config.TimeLimitMinutes * 60;
             ConsoleWrite("SERVER READY");
             return true;
         }
@@ -626,6 +646,7 @@ namespace Infiniminer
             ConsoleWrite("CONNECT: " + player.Handle);
             SendCurrentMap(peer);
             SendPlayerJoined(player);
+            SendMatchInfo(null);
             PublicServerListUpdate();
         }
 
@@ -637,6 +658,7 @@ namespace Infiniminer
             ConsoleWrite("DISCONNECT: " + player.Handle);
             playerList.Remove(peer.Id);
             SendPlayerLeft(player, player.Kicked ? "WAS KICKED FROM THE GAME!" : "HAS ABANDONED THEIR DUTIES!");
+            SendMatchInfo(null);
             PublicServerListUpdate();
         }
 
@@ -802,6 +824,22 @@ namespace Infiniminer
                         PlayerTeam playerTeam = (PlayerTeam)msgBuffer.GetByte();
                         if (playerTeam != PlayerTeam.Red && playerTeam != PlayerTeam.Blue)
                             break;
+
+                        // With auto-balance on, nobody can join a team that already has more players.
+                        if (config.AutoBalance)
+                        {
+                            PlayerTeam otherTeam = playerTeam == PlayerTeam.Red ? PlayerTeam.Blue : PlayerTeam.Red;
+                            int requested = playerList.Values.Count(p => p != player && p.Team == playerTeam);
+                            int other = playerList.Values.Count(p => p != player && p.Team == otherTeam);
+                            if (requested > other)
+                            {
+                                playerTeam = otherTeam;
+                                NetDataWriter notice = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
+                                notice.Put((byte)ChatMessageType.SayAll);
+                                notice.Put("SERVER: THE TEAMS ARE UNEVEN, SO YOU HAVE JOINED THE " + GetTeamName(playerTeam) + " TEAM.");
+                                player.Peer.Send(notice, NetChannel.ReliableInOrder3);
+                            }
+                        }
 
                         // Switching teams while alive would let you carry loot to the other side.
                         if (player.Alive)
@@ -1139,10 +1177,23 @@ namespace Infiniminer
 
             if (config.SandboxMode)
                 return;
-            if (teamCashBlue >= config.WinningCashAmount && winningTeam == PlayerTeam.None)
+            if (teamCashBlue >= WinningCash && winningTeam == PlayerTeam.None)
                 winningTeam = PlayerTeam.Blue;
-            if (teamCashRed >= config.WinningCashAmount && winningTeam == PlayerTeam.None)
+            if (teamCashRed >= WinningCash && winningTeam == PlayerTeam.None)
                 winningTeam = PlayerTeam.Red;
+
+            // When time runs out, the richer team wins; a tie goes to overtime and the next deposit decides it.
+            if (winningTeam == PlayerTeam.None && Now >= matchEndTime)
+            {
+                if (teamCashRed != teamCashBlue)
+                    winningTeam = teamCashRed > teamCashBlue ? PlayerTeam.Red : PlayerTeam.Blue;
+                else if (!overtime)
+                {
+                    overtime = true;
+                    SendServerMessage("SERVER: TIME IS UP AND THE TEAMS ARE TIED. OVERTIME: THE NEXT DEPOSIT WINS!");
+                    SendMatchInfo(null);
+                }
+            }
         }
 
         public void DoLavaStuff()
@@ -1723,6 +1774,18 @@ namespace Infiniminer
             msgBuffer.Put((byte)ChatMessageType.SayAll);
             msgBuffer.Put(player.Handle + " HAS JOINED THE ADVENTURE!");
             SendToAll(msgBuffer, NetChannel.ReliableInOrder3);
+        }
+
+        // Tells one player (or everyone) the time left and the winning cash.
+        public void SendMatchInfo(ServerPlayer player)
+        {
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.MatchInfo);
+            msgBuffer.Put(SecondsLeft);
+            msgBuffer.Put(WinningCash);
+            if (player != null)
+                player.Peer.Send(msgBuffer, NetChannel.ReliableInOrder1);
+            else
+                SendToAll(msgBuffer, NetChannel.ReliableInOrder1);
         }
 
         public void BroadcastGameOver()

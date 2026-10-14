@@ -36,8 +36,9 @@ The original server trusted almost everything the client said.
       protocol plus a port field, expiry, per-address limits, and a web page listing the servers
 
 ## 5. Gameplay depth
-- [ ] Match timer / win target scaled to player count
-- [ ] Team auto-balance
+- [x] Match timer (`timelimit`, with overtime on a tie) and win target scaled to player count
+      (`winningcashperplayer`), shown on the HUD and scoreboard
+- [x] Team auto-balance (`autobalance`)
 - [ ] Larger worlds (64³ is baked into the protocol)
 - [ ] Better player collision (currently three sample points)
 

@@ -30,3 +30,13 @@ homebases = false
 
 # If this flag is true, shock blocks kill anyone who touches them, not just anyone hitting their underside.
 shocktouch = false
+
+# Match length in minutes (0 = no limit). When time runs out the richer team wins; a tie goes to overtime,
+# where the next deposit wins.
+timelimit = 0
+
+# Extra cash needed to win for every connected player, so bigger games last longer.
+winningcashperplayer = 0
+
+# If this flag is true, players cannot join a team that already has more players than the other.
+autobalance = false

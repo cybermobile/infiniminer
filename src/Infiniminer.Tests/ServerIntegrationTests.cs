@@ -44,7 +44,7 @@ namespace Infiniminer.Tests
             Directory.Delete(dataDirectory, true);
         }
 
-        sealed class Bot : IDisposable
+        internal sealed class Bot : IDisposable
         {
             public readonly EventBasedNetListener Listener = new EventBasedNetListener();
             public readonly NetManager Net;

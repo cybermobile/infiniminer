@@ -79,6 +79,9 @@ namespace Infiniminer
         public uint teamRedCash = 0;
         public uint teamBlueCash = 0;
         public PlayerTeam teamWinners = PlayerTeam.None;
+        public double matchEndTime = double.NaN;    // in game time; NaN: no time limit
+        public bool overtime = false;
+        public uint winningCash = 0;
         public Dictionary<Vector3, Beacon> beaconList = new Dictionary<Vector3, Beacon>();
 
         // Screen effect stuff.

@@ -441,6 +441,14 @@ namespace Infiniminer
                         {
                             Player player = propertyBag.playerList[playerId];
                             player.Team = (PlayerTeam)msgBuffer.GetByte();
+
+                            // The server can put us on the other team (auto-balance).
+                            if (playerId == propertyBag.playerMyId && player.Team != PlayerTeam.None && player.Team != propertyBag.playerTeam)
+                            {
+                                propertyBag.playerTeam = player.Team;
+                                propertyBag.playerBlocks = GameRules.GetBlocks(propertyBag.playerClass, player.Team);
+                                propertyBag.playerBlockSelected = 0;
+                            }
                         }
                     }
                     break;
@@ -509,6 +517,15 @@ namespace Infiniminer
                             player.UsingTool = msgBuffer.GetBool();
                             player.Score = (uint)(msgBuffer.GetUShort() * 100);
                         }
+                    }
+                    break;
+
+                case InfiniminerMessage.MatchInfo:
+                    {
+                        int secondsLeft = msgBuffer.GetInt();
+                        propertyBag.winningCash = msgBuffer.GetUInt();
+                        propertyBag.overtime = secondsLeft == 0;
+                        propertyBag.matchEndTime = secondsLeft < 0 ? double.NaN : gameTime.TotalGameTime.TotalSeconds + secondsLeft;
                     }
                     break;
 

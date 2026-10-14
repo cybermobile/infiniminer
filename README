@@ -69,6 +69,9 @@ executable. Other new settings:
               default, so only LAN discovery and direct connect are used.
   homebases   (server) give each team a home base to spawn at (default false).
   shocktouch  (server) shock blocks kill on any touch, not just from below (default false).
+  timelimit   (server) match length in minutes; the richer team wins, ties go to overtime (default 0, off).
+  winningcashperplayer  (server) extra cash needed to win per connected player (default 0).
+  autobalance (server) players can't join a team that already has more players (default false).
 
 Fonts: the original used the 04b08 and 04b03b bitmap fonts by Yuji Oshimoto, which are not
 redistributed here (http://www.dsg4.com/04/extra/bitmap/). The game ships with the look-alike

@@ -108,8 +108,11 @@ namespace Infiniminer
             return msg.timestamp <= 0;
         }
 
+        double currentTime = 0;
+
         public void Update(GameTime gameTime)
         {
+            currentTime = gameTime.TotalGameTime.TotalSeconds;
             if (_P == null)
                 return;
 
@@ -319,6 +322,15 @@ namespace Infiniminer
             spriteBatch.DrawString(uiFont, "RED: $" + _P.teamRedCash, new Vector2(textStart + (int)(700 * span), 2), InfiniminerGame.IM_RED);
             spriteBatch.DrawString(uiFont, "BLUE: $" + _P.teamBlueCash, new Vector2(textStart + (int)(860 * span), 2), InfiniminerGame.IM_BLUE);
 
+            // Match clock, when the server has a time limit.
+            if (_P.overtime && _P.teamWinners == PlayerTeam.None)
+                RenderMessageCenter(spriteBatch, "OVERTIME: NEXT DEPOSIT WINS", new Vector2(ScreenWidth / 2, 34), InfiniminerGame.IM_RED, Color.Black);
+            else if (!double.IsNaN(_P.matchEndTime) && _P.teamWinners == PlayerTeam.None)
+            {
+                int secondsLeft = (int)Math.Max(0, Math.Ceiling(_P.matchEndTime - currentTime));
+                RenderMessageCenter(spriteBatch, string.Format("TIME LEFT: {0}:{1:00}", secondsLeft / 60, secondsLeft % 60), new Vector2(ScreenWidth / 2, 34), secondsLeft <= 60 ? InfiniminerGame.IM_RED : Color.White, Color.Black);
+            }
+
             // Draw player information.
             if ((Keyboard.GetState().IsKeyDown(gameInstance.Settings.Key(GameAction.Scoreboard)) && _P.screenEffect == ScreenEffect.None) || _P.teamWinners != PlayerTeam.None)
             {
@@ -332,6 +344,9 @@ namespace Infiniminer
                     RenderMessageCenter(spriteBatch, gameOverMessage, new Vector2(ScreenWidth / 2, 150), teamColor, new Color(0, 0, 0, 0));
                 }
                 
+                if (_P.teamWinners == PlayerTeam.None && _P.winningCash > 0)
+                    RenderMessageCenter(spriteBatch, "THE FIRST TEAM TO EARN $" + _P.winningCash + " WINS", new Vector2(ScreenWidth / 2, 150), Color.White, new Color(0, 0, 0, 0));
+
                 int drawY = 200;
                 foreach (Player p in _P.playerList.Values)
                 {

@@ -12,6 +12,9 @@ namespace Infiniminer
         public int Port = GameConstants.DefaultPort;
         public bool HomeBases = false;      // each team gets a base to spawn at
         public bool ShockTouch = false;     // shock blocks kill on any touch, not just from below
+        public float TimeLimitMinutes = 0;  // 0: play until a team reaches the winning cash
+        public uint WinningCashPerPlayer = 0; // added to the winning cash for every connected player
+        public bool AutoBalance = false;    // players can't join a team that already has more players
 
         // The original public server list (apps.keithholman.net) no longer exists, so listing is opt-in
         // through this setting. The endpoint receives the same form POST the original server sent.
@@ -31,6 +34,9 @@ namespace Infiniminer
             config.Port = dataFile.GetInt("port", config.Port);
             config.HomeBases = dataFile.GetBool("homebases", config.HomeBases);
             config.ShockTouch = dataFile.GetBool("shocktouch", config.ShockTouch);
+            config.TimeLimitMinutes = Math.Max(0, dataFile.GetFloat("timelimit", config.TimeLimitMinutes));
+            config.WinningCashPerPlayer = dataFile.GetUInt("winningcashperplayer", config.WinningCashPerPlayer);
+            config.AutoBalance = dataFile.GetBool("autobalance", config.AutoBalance);
             config.ServerListUrl = dataFile.GetString("serverlist", config.ServerListUrl);
             return config;
         }
