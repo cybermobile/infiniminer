@@ -17,7 +17,38 @@ namespace Infiniminer.States
         List<int> descWidths = new List<int>();
         SpriteFontBase uiFont;
         bool directConnectIPEnter = false;
-        int highlighted = -1;           // the keyboard/controller selection in the server list (-1: none yet)
+        int highlighted = -1;           // the keyboard/controller selection in the list (-1: none yet)
+        const int MaxServersShown = 23; // below the HOST A GAME row
+
+        // The list: a row to host a game (or end the one we host), then the servers found.
+        int RowCount
+        {
+            get { return 1 + Math.Min(serverList.Count, MaxServersShown); }
+        }
+
+        string RowText(int row)
+        {
+            if (row == 0)
+                return Game.IsHosting ? "[ END YOUR GAME ]" : "[ HOST A GAME ]";
+            return serverList[row - 1].GetServerDesc();
+        }
+
+        void ChooseRow(int row)
+        {
+            if (row == 0)
+            {
+                _P.PlaySound(InfiniminerSound.ClickHigh);
+                if (Game.IsHosting)
+                {
+                    Game.StopHostedServer();
+                    Refresh();
+                }
+                else
+                    nextState = typeof(HostGameState);
+            }
+            else if (row - 1 < serverList.Count)
+                Join(serverList[row - 1]);
+        }
         string directConnectIP = "";
 
         ClickRegion[] clkMenuServer = new ClickRegion[3] {
@@ -69,14 +100,14 @@ namespace Infiniminer.States
             spriteBatch.Draw(texMenu, drawRect, Color.White);
 
             int drawY = 80;
-            for (int i = 0; i < serverList.Count && drawY < 660; i++, drawY += 25)
+            for (int i = 0; i < RowCount; i++, drawY += 25)
             {
-                string description = serverList[i].GetServerDesc();
+                string description = RowText(i);
                 int textWidth = (int)(uiFont.MeasureString(description).X);
                 descWidths.Add(textWidth + 30);
                 if (i == highlighted)
                     spriteBatch.Draw(Game.Assets.WhitePixel, new Rectangle(InfiniminerGame.MenuWidth / 2 - textWidth / 2 - 15, drawRect.Y + drawY - 4, textWidth + 30, 24), new Color(60, 60, 60));
-                spriteBatch.DrawString(uiFont, description, new Vector2(InfiniminerGame.MenuWidth / 2 - textWidth / 2, drawRect.Y + drawY), Color.White);
+                spriteBatch.DrawString(uiFont, description, new Vector2(InfiniminerGame.MenuWidth / 2 - textWidth / 2, drawRect.Y + drawY), i == 0 ? InfiniminerGame.IM_BLUE : Color.White);
             }
 
             spriteBatch.DrawString(uiFont, InfiniminerGame.INFINIMINER_VERSION, new Vector2(10, InfiniminerGame.MenuHeight - 20), Color.White);
@@ -196,18 +227,18 @@ namespace Infiniminer.States
                     nextState = typeof(TitleState);
                 }
 
-                // Choosing a server without the mouse.
-                int visible = Math.Min(serverList.Count, 24);
-                if ((key == Keys.Up || key == Keys.Down) && visible > 0)
+                // Choosing without the mouse.
+                int rows = RowCount;
+                if (key == Keys.Up || key == Keys.Down)
                 {
-                    if (highlighted < 0 || highlighted >= visible)
-                        highlighted = key == Keys.Up ? visible - 1 : 0;
+                    if (highlighted < 0 || highlighted >= rows)
+                        highlighted = key == Keys.Up ? rows - 1 : Math.Min(1, rows - 1);
                     else
-                        highlighted = (highlighted + (key == Keys.Up ? -1 : 1) + visible) % visible;
+                        highlighted = (highlighted + (key == Keys.Up ? -1 : 1) + rows) % rows;
                     _P.PlaySound(InfiniminerSound.ClickLow);
                 }
-                if (key == Keys.Enter && highlighted >= 0 && highlighted < serverList.Count)
-                    Join(serverList[highlighted]);
+                if (key == Keys.Enter && highlighted >= 0 && highlighted < rows)
+                    ChooseRow(highlighted);
                 if (key == Keys.F5)
                     Refresh();
             }
@@ -253,12 +284,12 @@ namespace Infiniminer.States
             y = menuPoint.Y;
             if (directConnectIPEnter == false)
             {
-                int serverIndex = (y - drawRect.Y - 75) / 25;
-                if (serverIndex >= 0 && serverIndex < serverList.Count && serverIndex < descWidths.Count)
+                int row = (y - drawRect.Y - 75) / 25;
+                if (y >= drawRect.Y + 75 && row < RowCount && row < descWidths.Count)
                 {
                     int distanceFromCenter = Math.Abs(InfiniminerGame.MenuWidth / 2 - x);
-                    if (distanceFromCenter < descWidths[serverIndex] / 2)
-                        Join(serverList[serverIndex]);
+                    if (distanceFromCenter < descWidths[row] / 2)
+                        ChooseRow(row);
                 }
 
                 x -= drawRect.X;

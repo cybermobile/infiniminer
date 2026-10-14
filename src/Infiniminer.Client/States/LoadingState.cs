@@ -95,7 +95,7 @@ namespace Infiniminer.States
         {
             if (key == Keys.Escape)
             {
-                _P.serverPeer?.Disconnect();
+                Game.LeaveServer();
                 nextState = typeof(ServerBrowserState);
             }
         }

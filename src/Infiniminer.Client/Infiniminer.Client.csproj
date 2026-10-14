@@ -14,6 +14,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Infiniminer.Shared\Infiniminer.Shared.csproj" />
+    <!-- HOST GAME runs a server inside the client. -->
+    <ProjectReference Include="..\Infiniminer.Server\Infiniminer.Server.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- Game assets are shared with the original XNA project; they are loaded at runtime, no content pipeline needed. -->

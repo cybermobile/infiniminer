@@ -176,6 +176,32 @@ namespace Infiniminer
             return TextUtil.Sanitize(input);
         }
 
+        // The server started with HOST GAME, if any. It keeps running while we are in the menus (so the
+        // game survives a restart after a match) until we end it or quit.
+        public HostedServer HostedServer;
+
+        public bool IsHosting
+        {
+            get { return HostedServer != null && HostedServer.Running; }
+        }
+
+        public void StopHostedServer()
+        {
+            HostedServer?.Stop();
+            HostedServer = null;
+        }
+
+        // Leaves the current server; if it is the one we host, that ends the game for everyone.
+        public void LeaveServer()
+        {
+            propertyBag.serverPeer?.Disconnect();
+            if (IsHosting && HostedServer.Ready && HostedServer.EndPoint.Equals(CurrentServer))
+                StopHostedServer();
+        }
+
+        // The server we joined last.
+        public IPEndPoint CurrentServer { get; private set; }
+
         public void JoinGame(IPEndPoint serverEndPoint)
         {
             // Clear out the map load progress indicator.
@@ -187,6 +213,7 @@ namespace Infiniminer
             NetDataWriter connectBuffer = ClientMessages.ConnectRequest(propertyBag.playerHandle);
 
             // Connect to the server.
+            CurrentServer = serverEndPoint;
             propertyBag.serverPeer = propertyBag.netClient.Connect(serverEndPoint, connectBuffer);
         }
 
@@ -346,6 +373,7 @@ namespace Infiniminer
         protected override void OnExiting(object sender, ExitingEventArgs args)
         {
             propertyBag?.netClient.Stop();
+            StopHostedServer();
 
             base.OnExiting(sender, args);
         }

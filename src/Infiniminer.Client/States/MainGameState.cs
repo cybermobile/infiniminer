@@ -354,7 +354,7 @@ namespace Infiniminer.States
             // Exit!
             if (key == Keys.Y && Keyboard.GetState().IsKeyDown(Keys.Escape))
             {
-                _P.serverPeer?.Disconnect();
+                Game.LeaveServer();
                 nextState = typeof(ServerBrowserState);
                 return;
             }

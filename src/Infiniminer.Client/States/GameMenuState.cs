@@ -56,8 +56,9 @@ namespace Infiniminer.States
                 },
                 new Row
                 {
-                    Label = "LEAVE SERVER",
-                    Activate = () => { _P.serverPeer?.Disconnect(); Go(typeof(ServerBrowserState)); },
+                    Label = Game.IsHosting ? "END GAME" : "LEAVE SERVER",
+                    Value = () => Game.IsHosting ? "FOR EVERYONE" : "",
+                    Activate = () => { Game.LeaveServer(); Go(typeof(ServerBrowserState)); },
                 },
             };
         }

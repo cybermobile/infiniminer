@@ -70,8 +70,8 @@ The original server trusted almost everything the client said.
 - [x] Controller support: analog movement and look, hold RT to dig, rumble, every menu navigable with the
       D-pad/stick (and the keyboard), an in-game menu (Escape or Start), prompts that follow the device in use,
       controller sensitivity and vibration options, and a controller layout page
-- [ ] Host a game from the client (runs a server in the background; single player and LAN parties without a
-      separate server window)
+- [x] Host a game from the client: HOST A GAME in the server list runs a server inside the game (world size,
+      players, time limit, lava, home bases, sandbox), LAN players find it as usual, END GAME stops it
 - [ ] Recent servers in the server browser, and reconnecting to the last one
 - [ ] Move the local player's fields out of `PropertyBag` into their own class
 - [ ] Linux AppImage

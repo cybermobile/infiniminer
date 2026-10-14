@@ -44,6 +44,15 @@ namespace Infiniminer
         public int ControllerSensitivity = 10;  // 1-20: right stick look speed
         public bool Vibration = true;
         public string ServerListUrl = "";
+
+        // HOST GAME settings (the server name defaults to "<handle>'S GAME").
+        public string HostName = "";
+        public int HostMapSize = GameConstants.MapSize;
+        public int HostMaxPlayers = 16;
+        public int HostTimeLimit = 0;       // minutes; 0 for none
+        public bool HostLava = true;
+        public bool HostHomeBases = true;
+        public bool HostSandbox = false;
         public Dictionary<GameAction, Keys> KeyBindings = DefaultKeyBindings();
 
         public const int MinSensitivity = 1, MaxSensitivity = 20;
@@ -70,6 +79,27 @@ namespace Infiniminer
                 [GameAction.Help] = Keys.F1,
                 [GameAction.DepositOre] = Keys.D1,
                 [GameAction.WithdrawOre] = Keys.D2,
+            };
+        }
+
+        public string HostServerName
+        {
+            get { return HostName != "" ? HostName : (Handle + "'s game").ToUpperInvariant(); }
+        }
+
+        // The server settings for HOST GAME.
+        public ServerConfig HostConfig()
+        {
+            return new ServerConfig
+            {
+                ServerName = HostServerName,
+                MapSize = HostMapSize,
+                MaxPlayers = (uint)HostMaxPlayers,
+                TimeLimitMinutes = HostTimeLimit,
+                IncludeLava = HostLava,
+                HomeBases = HostHomeBases,
+                SandboxMode = HostSandbox,
+                AutoBalance = true,
             };
         }
 
@@ -118,6 +148,14 @@ namespace Infiniminer
             settings.ControllerSensitivity = Math.Clamp(dataFile.GetInt("controllersensitivity", settings.ControllerSensitivity), MinSensitivity, MaxSensitivity);
             settings.Vibration = dataFile.GetBool("vibration", settings.Vibration);
             settings.ServerListUrl = dataFile.GetString("serverlist", settings.ServerListUrl);
+            settings.HostName = dataFile.GetString("host_name", settings.HostName);
+            int mapSize = dataFile.GetInt("host_mapsize", settings.HostMapSize);
+            settings.HostMapSize = GameConstants.MapSizes.Contains(mapSize) ? mapSize : GameConstants.MapSize;
+            settings.HostMaxPlayers = Math.Clamp(dataFile.GetInt("host_maxplayers", settings.HostMaxPlayers), 2, 32);
+            settings.HostTimeLimit = Math.Clamp(dataFile.GetInt("host_timelimit", settings.HostTimeLimit), 0, 120);
+            settings.HostLava = dataFile.GetBool("host_lava", settings.HostLava);
+            settings.HostHomeBases = dataFile.GetBool("host_homebases", settings.HostHomeBases);
+            settings.HostSandbox = dataFile.GetBool("host_sandbox", settings.HostSandbox);
             foreach (GameAction action in Enum.GetValues<GameAction>())
                 if (Enum.TryParse(dataFile.GetString(ConfigKey(action), ""), true, out Keys key) && key != Keys.None)
                     settings.Bind(action, key);
@@ -166,6 +204,15 @@ namespace Infiniminer
             Line("# Public server list to show in the server browser (LAN servers are always found automatically).");
             Line("# Example: serverlist = http://example.com/plain");
             Line("serverlist = " + ServerListUrl);
+            Line();
+            Line("# The last settings used for HOST GAME.");
+            Line("host_name = " + HostName);
+            Line("host_mapsize = " + HostMapSize.ToString(CultureInfo.InvariantCulture));
+            Line("host_maxplayers = " + HostMaxPlayers.ToString(CultureInfo.InvariantCulture));
+            Line("host_timelimit = " + HostTimeLimit.ToString(CultureInfo.InvariantCulture));
+            Line("host_lava = " + Bool(HostLava));
+            Line("host_homebases = " + Bool(HostHomeBases));
+            Line("host_sandbox = " + Bool(HostSandbox));
             Line();
             Line("# Key bindings (names from https://docs.monogame.net/api/Microsoft.Xna.Framework.Input.Keys.html).");
             foreach (GameAction action in Enum.GetValues<GameAction>())
