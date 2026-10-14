@@ -1,10 +1,104 @@
 INFINIMINER
 ===========
 
-BUILDING
-========
+Infiniminer is a team-based block mining and building game by Zach Barth (Zachtronics), released under
+the MIT license.
 
-Building Infiniminer requires Visual Studio 2008 and XNA Game Studio 3.0. 
+This repository contains two versions of the source:
+
+  src/   A modern, cross-platform port that runs on Windows, macOS and Linux (.NET 8 + MonoGame).
+  code/  The original 2009 v1.5 source (Visual Studio 2008, XNA Game Studio 3.0, Windows only),
+         kept for reference. The modern port loads its art and sounds from code/InfiniminerClient/Content.
+
+
+RUNNING THE MODERN VERSION
+==========================
+
+The only requirement is the .NET 8 SDK (https://dotnet.microsoft.com/download). No content pipeline,
+shader compiler, Visual Studio or Wine is needed on any platform.
+
+    dotnet run --project src/Infiniminer.Server      # start a dedicated server
+    dotnet run --project src/Infiniminer.Client      # start the game
+
+The client finds servers on your LAN automatically. Use [ DIRECT CONNECT ] for anything else; it accepts
+an IP address or host name, optionally followed by ":port".
+
+To build standalone, self-contained copies (no .NET install needed by players), pick a runtime:
+
+    dotnet publish src/Infiniminer.Client -c Release -r win-x64   --self-contained -o out/Infiniminer
+    dotnet publish src/Infiniminer.Server -c Release -r win-x64   --self-contained -o out/InfiniminerServer
+
+    Runtime identifiers: win-x64, osx-arm64 (Apple Silicon), osx-x64 (Intel Mac), linux-x64, linux-arm64
+
+GitHub Actions (.github/workflows/build.yml) builds and tests on all three operating systems and uploads
+these builds as artifacts.
+
+Linux notes: the game needs OpenGL drivers. Pasting into the direct connect box (Ctrl-V) needs the
+xsel package.
+macOS notes: downloaded builds are unsigned; run `xattr -dr com.apple.quarantine <folder>` once.
+
+
+CONFIGURATION
+=============
+
+client.config.txt and server.config.txt (in bin/, copied next to the executables on build) work as
+before. They are read from the current directory if present, otherwise from next to the executable.
+New settings:
+
+  port        (server) UDP port to listen on, default 5565. LAN discovery only looks on 5565.
+  serverlist  (client and server) URL of a public server list. The original list service is gone, so
+              this is empty by default and only LAN/direct connect are used.
+
+Fonts: the original used the 04b08 and 04b03b bitmap fonts by Yuji Oshimoto, which are not
+redistributed here (http://www.dsg4.com/04/extra/bitmap/). The game ships with the look-alike
+Silkscreen font (SIL Open Font License). To use the originals, put 04B_08__.TTF and 04B_03B_.TTF in
+src/Infiniminer.Client/Fonts/ (or Content/fonts/ next to the built game).
+
+Server console commands: help, players, kick <ip>, ban <ip>, say <message>, save <file>, load <file>,
+restart, quit. The server reads commands from standard input, so it also runs headless (e.g. under
+systemd or Docker); Ctrl-C and SIGTERM shut it down cleanly.
+
+
+WHAT CHANGED IN THE PORT
+========================
+
+  XNA 3.0               -> MonoGame 3.8 (DesktopGL: SDL2 + OpenGL + OpenAL)
+  .NET Framework 2.0    -> .NET 8
+  Lidgren.Network (v1)  -> LiteNetLib (same channels and ordering guarantees)
+  Content pipeline      -> PNG/WAV/MP3/TTF files loaded at runtime
+  Custom HLSL shaders   -> MonoGame's built-in effects (BasicEffect fog reproduces the distance fade;
+                           bloom is done with blend-state passes), so no shader compiler is needed
+  WinForms/Win32 calls  -> cross-platform equivalents (window focus, clipboard, error reporting)
+
+The game rules, world generator, physics, classes, tools and menus are unchanged. Some fixes were made
+along the way:
+
+  - The server validates client input: only real construction blocks can be built, and bad packets or
+    unknown sound ids are ignored instead of crashing the server or other players' games.
+  - Map chunks and block updates share one ordered channel, so a block change can no longer be undone
+    by a late map chunk while joining.
+  - Scores above $65,535 no longer wrap on the scoreboard.
+  - Chat and the direct connect box use the system's keyboard layout instead of a hard-coded US layout.
+  - Connection errors (version mismatch, banned, server full, disconnects) are shown in the server
+    browser instead of a Windows message box.
+
+The network protocol is not compatible with v1.5, so the version is now v1.6.
+
+
+DEVELOPMENT
+===========
+
+    dotnet build src/Infiniminer.sln
+    dotnet test src/Infiniminer.sln
+
+The tests cover the shared protocol code and the world generator, and run a real server that a bot client
+joins over UDP (map download, team and class selection, digging, building and input validation).
+
+
+BUILDING THE ORIGINAL VERSION
+=============================
+
+Building the original version in code/ requires Visual Studio 2008 and XNA Game Studio 3.0.
 
 You'll also need the fonts 04b03b and 04b08 from the following site:
 

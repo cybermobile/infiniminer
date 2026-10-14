@@ -1,0 +1,44 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Build and test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build
+        run: dotnet build src/Infiniminer.sln -c Release
+      - name: Test
+        run: dotnet test src/Infiniminer.sln -c Release --no-build
+
+  publish:
+    name: Publish ${{ matrix.rid }}
+    needs: test
+    strategy:
+      matrix:
+        rid: [win-x64, osx-arm64, osx-x64, linux-x64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Publish client and server
+        run: |
+          dotnet publish src/Infiniminer.Client -c Release -r ${{ matrix.rid }} --self-contained -o out/Infiniminer
+          dotnet publish src/Infiniminer.Server -c Release -r ${{ matrix.rid }} --self-contained -o out/InfiniminerServer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: infiniminer-${{ matrix.rid }}
+          path: out/

@@ -1,0 +1,1427 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Globalization;
+using System.Net;
+using System.Numerics;
+using LiteNetLib;
+using LiteNetLib.Utils;
+
+namespace Infiniminer
+{
+    public class InfiniminerServer
+    {
+        NetManager netServer = null;
+        EventBasedNetListener listener = null;
+        BlockType[, ,] blockList = null;    // In game coordinates, where Y points up.
+        PlayerTeam[, ,] blockCreatorTeam = null;
+        const int MAPSIZE = GameConstants.MapSize;
+        readonly Dictionary<int, ServerPlayer> playerList = new Dictionary<int, ServerPlayer>();
+        int lavaBlockCount = 0;
+        readonly ServerConfig config;
+        readonly string dataDirectory;
+        DateTime lastServerListUpdate = DateTime.Now;
+        List<string> banList = null;
+
+        readonly ConcurrentQueue<string> pendingCommands = new ConcurrentQueue<string>();
+        bool keepRunning = true;
+
+        uint teamCashRed = 0;
+        uint teamCashBlue = 0;
+        uint teamOreRed = 0;
+        uint teamOreBlue = 0;
+
+        PlayerTeam winningTeam = PlayerTeam.None;
+
+        // Server restarting variables.
+        DateTime restartTime = DateTime.Now;
+        bool restartTriggered = false;
+
+        // Store the last time that we did a flow calculation.
+        DateTime lastFlowCalc = DateTime.Now;
+
+        uint duplicateNameCount = 0;
+
+        // Identifies this server instance in LAN discovery replies, so a server reachable over
+        // several interfaces (IPv4 and IPv6) is listed once.
+        readonly string instanceId = Guid.NewGuid().ToString("N");
+
+        public Action<string> Log = line => Console.WriteLine(line);
+
+        public InfiniminerServer(ServerConfig config, string dataDirectory)
+        {
+            this.config = config;
+            this.dataDirectory = dataDirectory;
+        }
+
+        public int Port
+        {
+            get { return netServer.LocalPort; }
+        }
+
+        public int PlayerCount
+        {
+            get { return playerList.Count; }
+        }
+
+        public BlockType GetBlock(int x, int y, int z)
+        {
+            return blockList[x, y, z];
+        }
+
+        public string GetExtraInfo()
+        {
+            string extraInfo = "";
+            if (config.SandboxMode)
+                extraInfo += "sandbox";
+            else
+                extraInfo += string.Format(CultureInfo.InvariantCulture, "{0:#.##k}", config.WinningCashAmount / 1000);
+            if (!config.IncludeLava)
+                extraInfo += ", !lava";
+            return extraInfo;
+        }
+
+        public void PublicServerListUpdate()
+        {
+            if (!config.PublicServer)
+                return;
+            lastServerListUpdate = DateTime.Now;
+
+            if (config.ServerListUrl == "")
+            {
+                ConsoleWrite("PUBLICLIST: NO 'serverlist' URL CONFIGURED, SKIPPING");
+                return;
+            }
+
+            Dictionary<string, string> postDict = new Dictionary<string, string>();
+            postDict["name"] = config.ServerName;
+            postDict["game"] = "INFINIMINER";
+            postDict["player_count"] = "" + playerList.Count;
+            postDict["player_capacity"] = "" + config.MaxPlayers;
+            postDict["extra"] = GetExtraInfo();
+
+            // Posted in the background so a slow or dead list server never stalls the game loop.
+            string url = config.ServerListUrl;
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await HttpRequest.PostAsync(url, postDict);
+                    ConsoleWrite("PUBLICLIST: UPDATING SERVER LISTING");
+                }
+                catch (Exception)
+                {
+                    ConsoleWrite("PUBLICLIST: ERROR CONTACTING SERVER");
+                }
+            });
+        }
+
+        public void ConsoleWrite(string text)
+        {
+            Log(text);
+        }
+
+        string DataPath(string filename)
+        {
+            return Path.Combine(dataDirectory, filename);
+        }
+
+        public List<string> LoadBanList()
+        {
+            List<string> retList = new List<string>();
+            try
+            {
+                foreach (string line in File.ReadAllLines(DataPath("banlist.txt")))
+                    if (line.Trim() != "")
+                        retList.Add(line.Trim());
+            }
+            catch (Exception)
+            {
+            }
+            return retList;
+        }
+
+        public void SaveBanList(List<string> banList)
+        {
+            try
+            {
+                File.WriteAllLines(DataPath("banlist.txt"), banList);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        public void KickPlayer(string ip)
+        {
+            List<ServerPlayer> playersToKick = new List<ServerPlayer>();
+            foreach (ServerPlayer p in playerList.Values)
+            {
+                if (p.IP == ip)
+                    playersToKick.Add(p);
+            }
+            foreach (ServerPlayer p in playersToKick)
+            {
+                p.Kicked = true;
+                p.Peer.Disconnect(NetExtensions.StringPayload("You were kicked from the server."));
+            }
+        }
+
+        public void BanPlayer(string ip)
+        {
+            if (!banList.Contains(ip))
+            {
+                banList.Add(ip);
+                SaveBanList(banList);
+            }
+        }
+
+        // Commands can be queued from any thread (e.g. the stdin reader); they run on the game loop.
+        public void EnqueueCommand(string command)
+        {
+            pendingCommands.Enqueue(command);
+        }
+
+        public void ConsoleProcessInput(string consoleInput)
+        {
+            string[] args = consoleInput.Split(' ');
+
+            ConsoleWrite("> " + consoleInput);
+
+            switch (args[0].ToLower().Trim())
+            {
+                case "help":
+                    {
+                        ConsoleWrite("SERVER CONSOLE COMMANDS:");
+                        ConsoleWrite(" players");
+                        ConsoleWrite(" kick <ip>");
+                        ConsoleWrite(" ban <ip>");
+                        ConsoleWrite(" say <message>");
+                        ConsoleWrite(" save <mapfile>");
+                        ConsoleWrite(" load <mapfile>");
+                        ConsoleWrite(" restart");
+                        ConsoleWrite(" quit");
+                    }
+                    break;
+
+                case "players":
+                    {
+                        foreach (ServerPlayer p in playerList.Values)
+                        {
+                            string teamIdent = "";
+                            if (p.Team == PlayerTeam.Red)
+                                teamIdent = " (R)";
+                            else if (p.Team == PlayerTeam.Blue)
+                                teamIdent = " (B)";
+                            ConsoleWrite(p.Handle + teamIdent + " - " + p.IP);
+                        }
+                    }
+                    break;
+
+                case "kick":
+                    {
+                        if (args.Length == 2)
+                            KickPlayer(args[1]);
+                    }
+                    break;
+
+                case "ban":
+                    {
+                        if (args.Length == 2)
+                        {
+                            KickPlayer(args[1]);
+                            BanPlayer(args[1]);
+                        }
+                    }
+                    break;
+
+                case "quit":
+                    {
+                        keepRunning = false;
+                    }
+                    break;
+
+                case "restart":
+                    {
+                        restartTriggered = true;
+                        restartTime = DateTime.Now;
+                    }
+                    break;
+
+                case "say":
+                    {
+                        string message = "SERVER: ";
+                        for (int i = 1; i < args.Length; i++)
+                            message += args[i] + " ";
+                        SendServerMessage(TextUtil.Sanitize(message));
+                    }
+                    break;
+
+                case "save":
+                    {
+                        if (args.Length >= 2)
+                            SaveLevel(args[1]);
+                    }
+                    break;
+
+                case "load":
+                    {
+                        if (args.Length >= 2)
+                            LoadLevel(args[1]);
+                    }
+                    break;
+            }
+        }
+
+        public void SaveLevel(string filename)
+        {
+            try
+            {
+                using StreamWriter sw = new StreamWriter(DataPath(filename));
+                for (int x = 0; x < MAPSIZE; x++)
+                    for (int y = 0; y < MAPSIZE; y++)
+                        for (int z = 0; z < MAPSIZE; z++)
+                            sw.WriteLine((byte)blockList[x, y, z] + "," + (byte)blockCreatorTeam[x, y, z]);
+            }
+            catch (Exception e)
+            {
+                ConsoleWrite("ERROR: could not save level: " + e.Message);
+            }
+        }
+
+        public void LoadLevel(string filename)
+        {
+            try
+            {
+                using StreamReader sr = new StreamReader(DataPath(filename));
+                for (int x = 0; x < MAPSIZE; x++)
+                    for (int y = 0; y < MAPSIZE; y++)
+                        for (int z = 0; z < MAPSIZE; z++)
+                        {
+                            string line = sr.ReadLine();
+                            string[] fileArgs = line.Split(',');
+                            if (fileArgs.Length == 2)
+                            {
+                                blockList[x, y, z] = (BlockType)int.Parse(fileArgs[0], CultureInfo.InvariantCulture);
+                                blockCreatorTeam[x, y, z] = (PlayerTeam)int.Parse(fileArgs[1], CultureInfo.InvariantCulture);
+                            }
+                        }
+            }
+            catch (FileNotFoundException)
+            {
+                ConsoleWrite("ERROR: File not found!");
+            }
+            catch (Exception e)
+            {
+                ConsoleWrite("ERROR: could not load level: " + e.Message);
+            }
+        }
+
+        List<string> beaconIDList = new List<string>();
+        Dictionary<Vector3, Beacon> beaconList = new Dictionary<Vector3, Beacon>();
+        Random randGen = new Random();
+        public string _GenerateBeaconID()
+        {
+            string id = "K";
+            for (int i = 0; i < 3; i++)
+                id += (char)randGen.Next(48, 58);
+            return id;
+        }
+        public string GenerateBeaconID()
+        {
+            string newId = _GenerateBeaconID();
+            while (beaconIDList.Contains(newId))
+                newId = _GenerateBeaconID();
+            beaconIDList.Add(newId);
+            return newId;
+        }
+
+        static bool InBounds(int x, int y, int z)
+        {
+            return !(x <= 0 || y <= 0 || z <= 0 || x >= MAPSIZE - 1 || y >= MAPSIZE - 1 || z >= MAPSIZE - 1);
+        }
+
+        public void SetBlock(int x, int y, int z, BlockType blockType, PlayerTeam team)
+        {
+            if (!InBounds(x, y, z))
+                return;
+
+            if (blockType == BlockType.BeaconRed || blockType == BlockType.BeaconBlue)
+            {
+                Beacon newBeacon = new Beacon();
+                newBeacon.ID = GenerateBeaconID();
+                newBeacon.Team = blockType == BlockType.BeaconRed ? PlayerTeam.Red : PlayerTeam.Blue;
+                beaconList[new Vector3(x, y, z)] = newBeacon;
+                SendSetBeacon(new Vector3(x, y + 1, z), newBeacon.ID, newBeacon.Team);
+            }
+
+            if (blockType == BlockType.None && (blockList[x, y, z] == BlockType.BeaconRed || blockList[x, y, z] == BlockType.BeaconBlue))
+            {
+                if (beaconList.ContainsKey(new Vector3(x, y, z)))
+                    beaconList.Remove(new Vector3(x, y, z));
+                SendSetBeacon(new Vector3(x, y + 1, z), "", PlayerTeam.None);
+            }
+
+            blockList[x, y, z] = blockType;
+            blockCreatorTeam[x, y, z] = team;
+
+            // x, y, z, type, all bytes
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.BlockSet);
+            msgBuffer.Put((byte)x);
+            msgBuffer.Put((byte)y);
+            msgBuffer.Put((byte)z);
+            msgBuffer.Put((byte)blockType);
+            SendToAll(msgBuffer, NetChannel.World);
+
+            if (blockType == BlockType.Lava)
+                lavaBlockCount += 1;
+        }
+
+        // Generates the world and starts listening. Returns false if the port could not be opened.
+        public bool Initialize()
+        {
+            // Load the ban-list.
+            banList = LoadBanList();
+
+            // Create our block world, translating the coordinates out of the cave generator (where Z points down)
+            BlockType[, ,] worldData = CaveGenerator.GenerateCaveSystem(MAPSIZE, config.IncludeLava, config.OreFactor);
+            blockList = new BlockType[MAPSIZE, MAPSIZE, MAPSIZE];
+            blockCreatorTeam = new PlayerTeam[MAPSIZE, MAPSIZE, MAPSIZE];
+            for (int i = 0; i < MAPSIZE; i++)
+                for (int j = 0; j < MAPSIZE; j++)
+                    for (int k = 0; k < MAPSIZE; k++)
+                    {
+                        blockList[i, MAPSIZE - 1 - k, j] = worldData[i, j, k];
+                        blockCreatorTeam[i, j, k] = PlayerTeam.None;
+                    }
+
+            // Initialize the server.
+            listener = new EventBasedNetListener();
+            listener.ConnectionRequestEvent += OnConnectionRequest;
+            listener.PeerConnectedEvent += OnPeerConnected;
+            listener.PeerDisconnectedEvent += OnPeerDisconnected;
+            listener.NetworkReceiveEvent += OnNetworkReceive;
+            listener.NetworkReceiveUnconnectedEvent += OnNetworkReceiveUnconnected;
+            netServer = new NetManager(listener);
+            netServer.ChannelsCount = NetChannel.ChannelCount;
+            netServer.AutoRecycle = true;
+            netServer.UnconnectedMessagesEnabled = true;
+            netServer.BroadcastReceiveEnabled = true;
+            if (!netServer.Start(config.Port))
+            {
+                ConsoleWrite("ERROR: COULD NOT LISTEN ON PORT " + config.Port);
+                return false;
+            }
+            ConsoleWrite("LISTENING ON PORT " + netServer.LocalPort);
+
+            // Calculate initial lava flows.
+            ConsoleWrite("CALCULATING INITIAL LAVA FLOWS");
+            for (int i = 0; i < MAPSIZE * 2; i++)
+                DoLavaStuff();
+            ConsoleWrite("TOTAL LAVA BLOCKS = " + lavaBlockCount);
+
+            // Send the initial server list update.
+            PublicServerListUpdate();
+
+            lastFlowCalc = DateTime.Now;
+            ConsoleWrite("SERVER READY");
+            return true;
+        }
+
+        // Runs the server until it quits. Returns true if the server should be restarted.
+        public bool Run()
+        {
+            ConsoleWrite("INFINIMINER SERVER " + GameConstants.Version);
+            if (!Initialize())
+                return false;
+
+            while (Tick())
+            {
+                // Pass control over to waiting threads.
+                Thread.Sleep(1);
+            }
+
+            return restartTriggered;
+        }
+
+        // Advances the server by one step. Returns false once the server has shut down.
+        public bool Tick()
+        {
+            // Handle console commands.
+            while (pendingCommands.TryDequeue(out string command))
+                ConsoleProcessInput(command);
+
+            if (!keepRunning)
+            {
+                Shutdown("The server was terminated.");
+                return false;
+            }
+
+            // Process any messages that are here.
+            netServer.PollEvents();
+
+            // Time to send a new server update?
+            TimeSpan updateTimeSpan = DateTime.Now - lastServerListUpdate;
+            if (updateTimeSpan.TotalMinutes > 5)
+                PublicServerListUpdate();
+
+            // Check for players who are in the zone to deposit.
+            DepositForPlayers();
+
+            // Is it time to do a lava calculation? If so, do it!
+            TimeSpan timeSpan = DateTime.Now - lastFlowCalc;
+            if (timeSpan.TotalMilliseconds > 500)
+            {
+                DoLavaStuff();
+                lastFlowCalc = DateTime.Now;
+            }
+
+            // Is the game over?
+            if (winningTeam != PlayerTeam.None && !restartTriggered)
+            {
+                BroadcastGameOver();
+                restartTriggered = true;
+                restartTime = DateTime.Now.AddSeconds(10);
+            }
+
+            // Restart the server?
+            if (restartTriggered && DateTime.Now > restartTime)
+            {
+                SaveLevel("autosave_" + (UInt64)DateTime.Now.ToBinary() + ".lvl");
+                Shutdown("The server is restarting.");
+                return false;
+            }
+
+            return true;
+        }
+
+        public void Shutdown(string reason)
+        {
+            if (netServer == null || !netServer.IsRunning)
+                return;
+            byte[] reasonData = NetExtensions.StringPayload(reason).CopyData();
+            netServer.DisconnectAll(reasonData, 0, reasonData.Length);
+            netServer.Stop();
+        }
+
+        void OnConnectionRequest(ConnectionRequest request)
+        {
+            string appIdentifier, handle, clientVersion;
+            try
+            {
+                appIdentifier = request.Data.GetString();
+                handle = request.Data.GetString();
+                clientVersion = request.Data.GetString();
+            }
+            catch (Exception)
+            {
+                request.Reject();
+                return;
+            }
+
+            if (appIdentifier != GameConstants.AppIdentifier)
+            {
+                request.Reject();
+                return;
+            }
+
+            handle = TextUtil.Sanitize(handle).Trim();
+            if (handle.Length == 0 || handle.Length > 20)
+                handle = "Player";
+
+            foreach (ServerPlayer oldPlayer in playerList.Values)
+            {
+                if (handle == oldPlayer.Handle)
+                {
+                    duplicateNameCount++;
+                    handle += "." + duplicateNameCount.ToString();
+                    break;
+                }
+            }
+
+            IPAddress address = request.RemoteEndPoint.Address;
+            if (address.IsIPv4MappedToIPv6)
+                address = address.MapToIPv4();
+            string ip = address.ToString();
+
+            if (clientVersion != GameConstants.Version)
+                request.Reject(NetExtensions.StringPayload("VER;" + GameConstants.Version));
+            else if (banList.Contains(ip))
+                request.Reject(NetExtensions.StringPayload("BAN;"));
+            else if (playerList.Count >= config.MaxPlayers)
+                request.Reject(NetExtensions.StringPayload("FULL;"));
+            else
+            {
+                NetPeer peer = request.Accept();
+                ServerPlayer newPlayer = new ServerPlayer(peer, ip);
+                newPlayer.Handle = handle;
+                playerList[peer.Id] = newPlayer;
+            }
+        }
+
+        void OnPeerConnected(NetPeer peer)
+        {
+            if (!playerList.TryGetValue(peer.Id, out ServerPlayer player))
+                return;
+
+            ConsoleWrite("CONNECT: " + player.Handle);
+            SendCurrentMap(peer);
+            SendPlayerJoined(player);
+            PublicServerListUpdate();
+        }
+
+        void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
+        {
+            if (!playerList.TryGetValue(peer.Id, out ServerPlayer player) || player.Peer != peer)
+                return;
+
+            ConsoleWrite("DISCONNECT: " + player.Handle);
+            playerList.Remove(peer.Id);
+            SendPlayerLeft(player, player.Kicked ? "WAS KICKED FROM THE GAME!" : "HAS ABANDONED THEIR DUTIES!");
+            PublicServerListUpdate();
+        }
+
+        void OnNetworkReceiveUnconnected(IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType)
+        {
+            if (!reader.TryGetString(out string request) || request != GameConstants.DiscoveryRequest)
+                return;
+
+            DiscoveryInfo info = new DiscoveryInfo
+            {
+                InstanceId = instanceId,
+                ServerName = config.ServerName,
+                PlayerCount = playerList.Count,
+                MaxPlayers = (int)config.MaxPlayers,
+                Extra = GetExtraInfo(),
+            };
+            NetDataWriter response = new NetDataWriter();
+            info.Write(response);
+            netServer.SendUnconnectedMessage(response, remoteEndPoint);
+        }
+
+        void OnNetworkReceive(NetPeer peer, NetPacketReader msgBuffer, byte channel, DeliveryMethod deliveryMethod)
+        {
+            if (!playerList.TryGetValue(peer.Id, out ServerPlayer player))
+                return;
+
+            try
+            {
+                HandleData(player, msgBuffer);
+            }
+            catch (Exception e)
+            {
+                // A malformed packet from one client must never take the server down.
+                ConsoleWrite("WARNING: bad packet from " + player.Handle + " (" + player.IP + "): " + e.Message);
+            }
+        }
+
+        void HandleData(ServerPlayer player, NetDataReader msgBuffer)
+        {
+            InfiniminerMessage dataType = (InfiniminerMessage)msgBuffer.GetByte();
+            switch (dataType)
+            {
+                case InfiniminerMessage.ChatMessage:
+                    {
+                        // Read the data from the packet.
+                        ChatMessageType chatType = (ChatMessageType)msgBuffer.GetByte();
+                        string chatString = TextUtil.Sanitize(msgBuffer.GetString());
+                        ConsoleWrite("CHAT: (" + player.Handle + ") " + chatString);
+
+                        // Append identifier information.
+                        if (chatType == ChatMessageType.SayAll)
+                            chatString = player.Handle + " (ALL): " + chatString;
+                        else
+                            chatString = player.Handle + " (TEAM): " + chatString;
+
+                        // Construct the message packet.
+                        NetDataWriter chatPacket = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
+                        chatPacket.Put((byte)((player.Team == PlayerTeam.Red) ? ChatMessageType.SayRedTeam : ChatMessageType.SayBlueTeam));
+                        chatPacket.Put(chatString);
+
+                        // Send the packet to people who should recieve it.
+                        foreach (ServerPlayer p in playerList.Values)
+                        {
+                            if (chatType == ChatMessageType.SayAll ||
+                                chatType == ChatMessageType.SayBlueTeam && p.Team == PlayerTeam.Blue ||
+                                chatType == ChatMessageType.SayRedTeam && p.Team == PlayerTeam.Red)
+                                p.Peer.Send(chatPacket, NetChannel.ReliableInOrder3);
+                        }
+                    }
+                    break;
+
+                case InfiniminerMessage.UseTool:
+                    {
+                        Vector3 playerPosition = msgBuffer.GetVector3();
+                        Vector3 playerHeading = msgBuffer.GetVector3();
+                        PlayerTools playerTool = (PlayerTools)msgBuffer.GetByte();
+                        BlockType blockType = (BlockType)msgBuffer.GetByte();
+                        switch (playerTool)
+                        {
+                            case PlayerTools.Pickaxe:
+                                UsePickaxe(player, playerPosition, playerHeading);
+                                break;
+                            case PlayerTools.ConstructionGun:
+                                UseConstructionGun(player, playerPosition, playerHeading, blockType);
+                                break;
+                            case PlayerTools.DeconstructionGun:
+                                UseDeconstructionGun(player, playerPosition, playerHeading);
+                                break;
+                            case PlayerTools.ProspectingRadar:
+                                UseSignPainter(player, playerPosition, playerHeading);
+                                break;
+                            case PlayerTools.Detonator:
+                                UseDetonator(player);
+                                break;
+                        }
+                    }
+                    break;
+
+                case InfiniminerMessage.SelectClass:
+                    {
+                        PlayerClass playerClass = (PlayerClass)msgBuffer.GetByte();
+                        ConsoleWrite("SELECT_CLASS: " + player.Handle + ", " + playerClass.ToString());
+                        switch (playerClass)
+                        {
+                            case PlayerClass.Engineer:
+                                player.OreMax = 350;
+                                player.WeightMax = 4;
+                                break;
+                            case PlayerClass.Miner:
+                                player.OreMax = 200;
+                                player.WeightMax = 8;
+                                break;
+                            case PlayerClass.Prospector:
+                                player.OreMax = 200;
+                                player.WeightMax = 4;
+                                break;
+                            case PlayerClass.Sapper:
+                                player.OreMax = 200;
+                                player.WeightMax = 4;
+                                break;
+                        }
+                        SendResourceUpdate(player);
+                    }
+                    break;
+
+                case InfiniminerMessage.PlayerSetTeam:
+                    {
+                        PlayerTeam playerTeam = (PlayerTeam)msgBuffer.GetByte();
+                        if (!Enum.IsDefined(playerTeam))
+                            break;
+                        ConsoleWrite("SELECT_TEAM: " + player.Handle + ", " + playerTeam.ToString());
+                        player.Team = playerTeam;
+                        SendResourceUpdate(player);
+                        SendPlayerSetTeam(player);
+                    }
+                    break;
+
+                case InfiniminerMessage.PlayerDead:
+                    {
+                        string deathMessage = TextUtil.Sanitize(msgBuffer.GetString());
+                        ConsoleWrite("PLAYER_DEAD: " + player.Handle + " " + deathMessage);
+
+                        player.Ore = 0;
+                        player.Cash = 0;
+                        player.Weight = 0;
+                        player.Alive = false;
+                        SendResourceUpdate(player);
+                        SendPlayerDead(player);
+
+                        if (deathMessage != "")
+                        {
+                            NetDataWriter chatPacket = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
+                            chatPacket.Put((byte)(player.Team == PlayerTeam.Red ? ChatMessageType.SayRedTeam : ChatMessageType.SayBlueTeam));
+                            chatPacket.Put(player.Handle + " " + deathMessage);
+                            SendToAll(chatPacket, NetChannel.ReliableInOrder3);
+                        }
+                    }
+                    break;
+
+                case InfiniminerMessage.PlayerAlive:
+                    {
+                        ConsoleWrite("PLAYER_ALIVE: " + player.Handle);
+                        player.Ore = 0;
+                        player.Cash = 0;
+                        player.Weight = 0;
+                        player.Alive = true;
+                        SendResourceUpdate(player);
+                        SendPlayerAlive(player);
+                    }
+                    break;
+
+                case InfiniminerMessage.PlayerUpdate:
+                    {
+                        player.Position = msgBuffer.GetVector3();
+                        player.Heading = msgBuffer.GetVector3();
+                        player.Tool = (PlayerTools)msgBuffer.GetByte();
+                        player.UsingTool = msgBuffer.GetBool();
+                        SendPlayerUpdate(player);
+                    }
+                    break;
+
+                case InfiniminerMessage.DepositOre:
+                    {
+                        DepositOre(player);
+                        foreach (ServerPlayer p in playerList.Values)
+                            SendResourceUpdate(p);
+                    }
+                    break;
+
+                case InfiniminerMessage.WithdrawOre:
+                    {
+                        WithdrawOre(player);
+                        foreach (ServerPlayer p in playerList.Values)
+                            SendResourceUpdate(p);
+                    }
+                    break;
+
+                case InfiniminerMessage.PlayerPing:
+                    {
+                        SendPlayerPing(msgBuffer.GetUInt());
+                    }
+                    break;
+
+                case InfiniminerMessage.PlaySound:
+                    {
+                        InfiniminerSound sound = (InfiniminerSound)msgBuffer.GetByte();
+                        Vector3 position = msgBuffer.GetVector3();
+                        if (Enum.IsDefined(sound))
+                            PlaySound(sound, position);
+                    }
+                    break;
+            }
+        }
+
+        public void DepositForPlayers()
+        {
+            foreach (ServerPlayer p in playerList.Values)
+            {
+                if (p.Position.Y > MAPSIZE - GameConstants.GroundLevel)
+                    DepositCash(p);
+            }
+
+            if (config.SandboxMode)
+                return;
+            if (teamCashBlue >= config.WinningCashAmount && winningTeam == PlayerTeam.None)
+                winningTeam = PlayerTeam.Blue;
+            if (teamCashRed >= config.WinningCashAmount && winningTeam == PlayerTeam.None)
+                winningTeam = PlayerTeam.Red;
+        }
+
+        public void DoLavaStuff()
+        {
+            bool[, ,] flowSleep = new bool[MAPSIZE, MAPSIZE, MAPSIZE]; //if true, do not calculate this turn
+
+            for (int i = 0; i < MAPSIZE; i++)
+                for (int j = 0; j < MAPSIZE; j++)
+                    for (int k = 0; k < MAPSIZE; k++)
+                        if (blockList[i, j, k] == BlockType.Lava && !flowSleep[i, j, k])
+                        {
+                            // RULES FOR LAVA EXPANSION:
+                            // if the block below is lava, do nothing
+                            // if the block below is empty space, add lava there
+                            // if the block below is something solid, add lava to the sides
+                            BlockType typeBelow = (j == 0) ? BlockType.Lava : blockList[i, j - 1, k];
+                            if (typeBelow == BlockType.None)
+                            {
+                                if (j > 0)
+                                {
+                                    SetBlock(i, j - 1, k, BlockType.Lava, PlayerTeam.None);
+                                    flowSleep[i, j - 1, k] = true;
+                                }
+                            }
+                            else if (typeBelow != BlockType.Lava)
+                            {
+                                if (i > 0 && blockList[i - 1, j, k] == BlockType.None)
+                                {
+                                    SetBlock(i - 1, j, k, BlockType.Lava, PlayerTeam.None);
+                                    flowSleep[i - 1, j, k] = true;
+                                }
+                                if (k > 0 && blockList[i, j, k - 1] == BlockType.None)
+                                {
+                                    SetBlock(i, j, k - 1, BlockType.Lava, PlayerTeam.None);
+                                    flowSleep[i, j, k - 1] = true;
+                                }
+                                if (i < MAPSIZE - 1 && blockList[i + 1, j, k] == BlockType.None)
+                                {
+                                    SetBlock(i + 1, j, k, BlockType.Lava, PlayerTeam.None);
+                                    flowSleep[i + 1, j, k] = true;
+                                }
+                                if (k < MAPSIZE - 1 && blockList[i, j, k + 1] == BlockType.None)
+                                {
+                                    SetBlock(i, j, k + 1, BlockType.Lava, PlayerTeam.None);
+                                    flowSleep[i, j, k + 1] = true;
+                                }
+                            }
+                        }
+        }
+
+        public BlockType BlockAtPoint(Vector3 point)
+        {
+            int x = GameConstants.ToBlock(point.X);
+            int y = GameConstants.ToBlock(point.Y);
+            int z = GameConstants.ToBlock(point.Z);
+            if (!InBounds(x, y, z))
+                return BlockType.None;
+            return blockList[x, y, z];
+        }
+
+        public bool RayCollision(Vector3 startPosition, Vector3 rayDirection, float distance, int searchGranularity, ref Vector3 hitPoint, ref Vector3 buildPoint)
+        {
+            Vector3 testPos = startPosition;
+            Vector3 buildPos = startPosition;
+            for (int i = 0; i < searchGranularity; i++)
+            {
+                testPos += rayDirection * distance / searchGranularity;
+                BlockType testBlock = BlockAtPoint(testPos);
+                if (testBlock != BlockType.None)
+                {
+                    hitPoint = testPos;
+                    buildPoint = buildPos;
+                    return true;
+                }
+                buildPos = testPos;
+            }
+            return false;
+        }
+
+        public void UsePickaxe(ServerPlayer player, Vector3 playerPosition, Vector3 playerHeading)
+        {
+            player.QueueAnimationBreak = true;
+
+            // Figure out what we're hitting.
+            Vector3 hitPoint = Vector3.Zero;
+            Vector3 buildPoint = Vector3.Zero;
+            if (!RayCollision(playerPosition, playerHeading, 2, 10, ref hitPoint, ref buildPoint))
+                return;
+            int x = GameConstants.ToBlock(hitPoint.X);
+            int y = GameConstants.ToBlock(hitPoint.Y);
+            int z = GameConstants.ToBlock(hitPoint.Z);
+
+            // Figure out what the result is.
+            bool removeBlock = false;
+            uint giveOre = 0;
+            uint giveCash = 0;
+            uint giveWeight = 0;
+            InfiniminerSound sound = InfiniminerSound.DigDirt;
+
+            switch (BlockAtPoint(hitPoint))
+            {
+                case BlockType.Dirt:
+                case BlockType.DirtSign:
+                    removeBlock = true;
+                    sound = InfiniminerSound.DigDirt;
+                    break;
+
+                case BlockType.Ore:
+                    removeBlock = true;
+                    giveOre = 20;
+                    sound = InfiniminerSound.DigMetal;
+                    break;
+
+                case BlockType.Gold:
+                    removeBlock = true;
+                    giveWeight = 1;
+                    giveCash = 100;
+                    sound = InfiniminerSound.DigMetal;
+                    break;
+
+                case BlockType.Diamond:
+                    removeBlock = true;
+                    giveWeight = 1;
+                    giveCash = 1000;
+                    sound = InfiniminerSound.DigMetal;
+                    break;
+            }
+
+            if (giveOre > 0)
+            {
+                if (player.Ore < player.OreMax)
+                {
+                    player.Ore = Math.Min(player.Ore + giveOre, player.OreMax);
+                    SendResourceUpdate(player);
+                }
+            }
+
+            if (giveWeight > 0)
+            {
+                if (player.Weight < player.WeightMax)
+                {
+                    player.Weight = Math.Min(player.Weight + giveWeight, player.WeightMax);
+                    player.Cash += giveCash;
+                    SendResourceUpdate(player);
+                }
+                else
+                    removeBlock = false;
+            }
+
+            if (removeBlock)
+            {
+                SetBlock(x, y, z, BlockType.None, PlayerTeam.None);
+                PlaySound(sound, player.Position);
+            }
+        }
+
+        public void UseConstructionGun(ServerPlayer player, Vector3 playerPosition, Vector3 playerHeading, BlockType blockType)
+        {
+            bool actionFailed = false;
+
+            // Only real construction blocks can be built (guards against modified clients).
+            if (!BlockInformation.IsBuildable(blockType))
+                actionFailed = true;
+
+            // If there's no surface within range, bail.
+            Vector3 hitPoint = Vector3.Zero;
+            Vector3 buildPoint = Vector3.Zero;
+            if (!RayCollision(playerPosition, playerHeading, 6, 25, ref hitPoint, ref buildPoint))
+                actionFailed = true;
+
+            // If the block is too expensive, bail.
+            uint blockCost = BlockInformation.GetCost(blockType);
+            if (config.SandboxMode && blockCost <= player.OreMax)
+                blockCost = 0;
+            if (blockCost > player.Ore)
+                actionFailed = true;
+
+            // If there's someone there currently, bail.
+            int x = GameConstants.ToBlock(buildPoint.X);
+            int y = GameConstants.ToBlock(buildPoint.Y);
+            int z = GameConstants.ToBlock(buildPoint.Z);
+            foreach (ServerPlayer p in playerList.Values)
+            {
+                if ((int)p.Position.X == x && (int)p.Position.Z == z && ((int)p.Position.Y == y || (int)p.Position.Y - 1 == y))
+                    actionFailed = true;
+            }
+
+            // If it's out of bounds, bail.
+            if (!InBounds(x, y, z))
+                actionFailed = true;
+
+            // If it's lava, don't let them build off of lava.
+            if (BlockAtPoint(hitPoint) == BlockType.Lava)
+                actionFailed = true;
+
+            if (actionFailed)
+            {
+                // Decharge the player's gun.
+                TriggerConstructionGunAnimation(player, -0.2f);
+            }
+            else
+            {
+                // Fire the player's gun.
+                TriggerConstructionGunAnimation(player, 0.5f);
+
+                // Build the block.
+                SetBlock(x, y, z, blockType, player.Team);
+                player.Ore -= blockCost;
+                SendResourceUpdate(player);
+
+                // Play the sound.
+                PlaySound(InfiniminerSound.ConstructionGun, player.Position);
+
+                // If it's an explosive block, add it to our list.
+                if (blockType == BlockType.Explosive)
+                    player.ExplosiveList.Add(new Vector3(x, y, z));
+            }
+        }
+
+        public void UseDeconstructionGun(ServerPlayer player, Vector3 playerPosition, Vector3 playerHeading)
+        {
+            bool actionFailed = false;
+
+            // If there's no surface within range, bail.
+            Vector3 hitPoint = Vector3.Zero;
+            Vector3 buildPoint = Vector3.Zero;
+            if (!RayCollision(playerPosition, playerHeading, 6, 25, ref hitPoint, ref buildPoint))
+                actionFailed = true;
+            int x = GameConstants.ToBlock(hitPoint.X);
+            int y = GameConstants.ToBlock(hitPoint.Y);
+            int z = GameConstants.ToBlock(hitPoint.Z);
+
+            // If this is another team's block, bail.
+            if (blockCreatorTeam[x, y, z] != player.Team)
+                actionFailed = true;
+
+            BlockType blockType = blockList[x, y, z];
+            if (!(blockType == BlockType.SolidBlue ||
+                blockType == BlockType.SolidRed ||
+                blockType == BlockType.BankBlue ||
+                blockType == BlockType.BankRed ||
+                blockType == BlockType.Jump ||
+                blockType == BlockType.Ladder ||
+                blockType == BlockType.Road ||
+                blockType == BlockType.Shock ||
+                blockType == BlockType.BeaconRed ||
+                blockType == BlockType.BeaconBlue ||
+                blockType == BlockType.TransBlue ||
+                blockType == BlockType.TransRed))
+                actionFailed = true;
+
+            if (actionFailed)
+            {
+                // Decharge the player's gun.
+                TriggerConstructionGunAnimation(player, -0.2f);
+            }
+            else
+            {
+                // Fire the player's gun.
+                TriggerConstructionGunAnimation(player, 0.5f);
+
+                // Remove the block.
+                SetBlock(x, y, z, BlockType.None, PlayerTeam.None);
+                PlaySound(InfiniminerSound.ConstructionGun, player.Position);
+            }
+        }
+
+        public void TriggerConstructionGunAnimation(ServerPlayer player, float animationValue)
+        {
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.TriggerConstructionGunAnimation);
+            msgBuffer.Put(animationValue);
+            player.Peer.Send(msgBuffer, NetChannel.ReliableInOrder1);
+        }
+
+        public void UseSignPainter(ServerPlayer player, Vector3 playerPosition, Vector3 playerHeading)
+        {
+            // If there's no surface within range, bail.
+            Vector3 hitPoint = Vector3.Zero;
+            Vector3 buildPoint = Vector3.Zero;
+            if (!RayCollision(playerPosition, playerHeading, 4, 25, ref hitPoint, ref buildPoint))
+                return;
+            int x = GameConstants.ToBlock(hitPoint.X);
+            int y = GameConstants.ToBlock(hitPoint.Y);
+            int z = GameConstants.ToBlock(hitPoint.Z);
+
+            if (blockList[x, y, z] == BlockType.Dirt)
+            {
+                SetBlock(x, y, z, BlockType.DirtSign, PlayerTeam.None);
+                PlaySound(InfiniminerSound.ConstructionGun, player.Position);
+            }
+            else if (blockList[x, y, z] == BlockType.DirtSign)
+            {
+                SetBlock(x, y, z, BlockType.Dirt, PlayerTeam.None);
+                PlaySound(InfiniminerSound.ConstructionGun, player.Position);
+            }
+        }
+
+        public void DetonateAtPoint(int x, int y, int z)
+        {
+            // Remove the block that is detonating.
+            SetBlock(x, y, z, BlockType.None, PlayerTeam.None);
+
+            // Remove this from any explosive lists it may be in.
+            foreach (ServerPlayer p in playerList.Values)
+                p.ExplosiveList.Remove(new Vector3(x, y, z));
+
+            // Detonate the block.
+            for (int dx = -2; dx <= 2; dx++)
+                for (int dy = -2; dy <= 2; dy++)
+                    for (int dz = -2; dz <= 2; dz++)
+                    {
+                        // Check that this is a sane block position.
+                        if (!InBounds(x + dx, y + dy, z + dz))
+                            continue;
+
+                        // Chain reactions!
+                        if (blockList[x + dx, y + dy, z + dz] == BlockType.Explosive)
+                            DetonateAtPoint(x + dx, y + dy, z + dz);
+
+                        // Detonation of normal blocks.
+                        bool destroyBlock = false;
+                        switch (blockList[x + dx, y + dy, z + dz])
+                        {
+                            case BlockType.Rock:
+                            case BlockType.Dirt:
+                            case BlockType.DirtSign:
+                            case BlockType.Ore:
+                            case BlockType.SolidRed:
+                            case BlockType.SolidBlue:
+                            case BlockType.TransRed:
+                            case BlockType.TransBlue:
+                            case BlockType.Ladder:
+                            case BlockType.Shock:
+                            case BlockType.Jump:
+                            case BlockType.Explosive:
+                            case BlockType.Lava:
+                            case BlockType.Road:
+                                destroyBlock = true;
+                                break;
+                        }
+                        if (destroyBlock)
+                            SetBlock(x + dx, y + dy, z + dz, BlockType.None, PlayerTeam.None);
+                    }
+
+            // Send off the explosion to clients.
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.TriggerExplosion);
+            msgBuffer.Put(new Vector3(x, y, z));
+            SendToAll(msgBuffer, NetChannel.ReliableUnordered);
+        }
+
+        public void UseDetonator(ServerPlayer player)
+        {
+            while (player.ExplosiveList.Count > 0)
+            {
+                Vector3 blockPos = player.ExplosiveList[0];
+                int x = (int)blockPos.X;
+                int y = (int)blockPos.Y;
+                int z = (int)blockPos.Z;
+
+                if (blockList[x, y, z] != BlockType.Explosive)
+                    player.ExplosiveList.RemoveAt(0);
+                else
+                    DetonateAtPoint(x, y, z);
+            }
+        }
+
+        public void DepositOre(ServerPlayer player)
+        {
+            uint depositAmount = Math.Min(50, player.Ore);
+            player.Ore -= depositAmount;
+            if (player.Team == PlayerTeam.Red)
+                teamOreRed = Math.Min(teamOreRed + depositAmount, 9999);
+            else
+                teamOreBlue = Math.Min(teamOreBlue + depositAmount, 9999);
+        }
+
+        public void WithdrawOre(ServerPlayer player)
+        {
+            if (player.Team == PlayerTeam.Red)
+            {
+                uint withdrawAmount = Math.Min(player.OreMax - player.Ore, Math.Min(50, teamOreRed));
+                player.Ore += withdrawAmount;
+                teamOreRed -= withdrawAmount;
+            }
+            else
+            {
+                uint withdrawAmount = Math.Min(player.OreMax - player.Ore, Math.Min(50, teamOreBlue));
+                player.Ore += withdrawAmount;
+                teamOreBlue -= withdrawAmount;
+            }
+        }
+
+        public void DepositCash(ServerPlayer player)
+        {
+            if (player.Cash <= 0)
+                return;
+
+            player.Score += player.Cash;
+
+            if (!config.SandboxMode)
+            {
+                if (player.Team == PlayerTeam.Red)
+                    teamCashRed += player.Cash;
+                else
+                    teamCashBlue += player.Cash;
+                SendServerMessage("SERVER: " + player.Handle + " HAS EARNED $" + player.Cash + " FOR THE " + GetTeamName(player.Team) + " TEAM!");
+            }
+
+            PlaySound(InfiniminerSound.CashDeposit, player.Position);
+            ConsoleWrite("DEPOSIT_CASH: " + player.Handle + ", " + player.Cash);
+
+            player.Cash = 0;
+            player.Weight = 0;
+
+            foreach (ServerPlayer p in playerList.Values)
+                SendResourceUpdate(p);
+        }
+
+        public string GetTeamName(PlayerTeam team)
+        {
+            switch (team)
+            {
+                case PlayerTeam.Red:
+                    return "RED";
+                case PlayerTeam.Blue:
+                    return "BLUE";
+            }
+            return "";
+        }
+
+        void SendToAll(NetDataWriter msgBuffer, NetChannel channel, ServerPlayer except = null)
+        {
+            foreach (ServerPlayer p in playerList.Values)
+                if (p != except)
+                    p.Peer.Send(msgBuffer, channel);
+        }
+
+        public void SendServerMessage(string message)
+        {
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
+            msgBuffer.Put((byte)ChatMessageType.SayAll);
+            msgBuffer.Put(message);
+            SendToAll(msgBuffer, NetChannel.ReliableInOrder3);
+        }
+
+        // Lets a player know about their resources.
+        public void SendResourceUpdate(ServerPlayer player)
+        {
+            // ore, cash, weight, max ore, max weight, team ore, red cash, blue cash, all uint
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.ResourceUpdate);
+            msgBuffer.Put((uint)player.Ore);
+            msgBuffer.Put((uint)player.Cash);
+            msgBuffer.Put((uint)player.Weight);
+            msgBuffer.Put((uint)player.OreMax);
+            msgBuffer.Put((uint)player.WeightMax);
+            msgBuffer.Put((uint)(player.Team == PlayerTeam.Red ? teamOreRed : teamOreBlue));
+            msgBuffer.Put((uint)teamCashRed);
+            msgBuffer.Put((uint)teamCashBlue);
+            player.Peer.Send(msgBuffer, NetChannel.ReliableInOrder1);
+        }
+
+        public void SendCurrentMap(NetPeer client)
+        {
+            Debug.Assert(MAPSIZE == 64, "The BlockBulkTransfer message requires a map size of 64.");
+
+            for (int x = 0; x < MAPSIZE; x++)
+                for (int y = 0; y < MAPSIZE; y += 16)
+                {
+                    NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.BlockBulkTransfer);
+                    msgBuffer.Put((byte)x);
+                    msgBuffer.Put((byte)y);
+                    for (int dy = 0; dy < 16; dy++)
+                        for (int z = 0; z < MAPSIZE; z++)
+                            msgBuffer.Put((byte)(blockList[x, y + dy, z]));
+                    client.Send(msgBuffer, NetChannel.World);
+                }
+        }
+
+        public void SendPlayerPing(uint playerId)
+        {
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerPing);
+            msgBuffer.Put(playerId);
+            SendToAll(msgBuffer, NetChannel.ReliableUnordered);
+        }
+
+        public void SendPlayerUpdate(ServerPlayer player)
+        {
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerUpdate);
+            msgBuffer.Put((uint)player.ID);
+            msgBuffer.Put(player.Position);
+            msgBuffer.Put(player.Heading);
+            msgBuffer.Put((byte)player.Tool);
+
+            if (player.QueueAnimationBreak)
+            {
+                player.QueueAnimationBreak = false;
+                msgBuffer.Put(false);
+            }
+            else
+                msgBuffer.Put(player.UsingTool);
+
+            // Score is sent in hundreds. (The original cast the score to ushort *before* dividing,
+            // which wrapped scores above $65,535.)
+            msgBuffer.Put((ushort)Math.Min(player.Score / 100, ushort.MaxValue));
+
+            SendToAll(msgBuffer, NetChannel.UnreliableInOrder1);
+        }
+
+        public void SendSetBeacon(Vector3 position, string text, PlayerTeam team)
+        {
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.SetBeacon);
+            msgBuffer.Put(position);
+            msgBuffer.Put(text);
+            msgBuffer.Put((byte)team);
+            SendToAll(msgBuffer, NetChannel.ReliableInOrder2);
+        }
+
+        public void SendPlayerJoined(ServerPlayer player)
+        {
+            NetDataWriter msgBuffer;
+
+            // Let this player know about other players.
+            foreach (ServerPlayer p in playerList.Values)
+            {
+                msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerJoined);
+                msgBuffer.Put((uint)p.ID);
+                msgBuffer.Put(p.Handle);
+                msgBuffer.Put(p == player);
+                msgBuffer.Put(p.Alive);
+                player.Peer.Send(msgBuffer, NetChannel.ReliableInOrder2);
+
+                msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerSetTeam);
+                msgBuffer.Put((uint)p.ID);
+                msgBuffer.Put((byte)p.Team);
+                player.Peer.Send(msgBuffer, NetChannel.ReliableInOrder2);
+            }
+
+            // Let this player know about all placed beacons.
+            foreach (KeyValuePair<Vector3, Beacon> bPair in beaconList)
+            {
+                Vector3 position = bPair.Key;
+                position.Y += 1; // beacon is shown a block below its actually position to make altitude show up right
+                msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.SetBeacon);
+                msgBuffer.Put(position);
+                msgBuffer.Put(bPair.Value.ID);
+                msgBuffer.Put((byte)bPair.Value.Team);
+                player.Peer.Send(msgBuffer, NetChannel.ReliableInOrder2);
+            }
+
+            // Let other players know about this player.
+            msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerJoined);
+            msgBuffer.Put((uint)player.ID);
+            msgBuffer.Put(player.Handle);
+            msgBuffer.Put(false);
+            msgBuffer.Put(player.Alive);
+            SendToAll(msgBuffer, NetChannel.ReliableInOrder2, player);
+
+            // Send this out just incase someone is joining at the last minute.
+            if (winningTeam != PlayerTeam.None)
+                BroadcastGameOver();
+
+            // Send out a chat message.
+            msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
+            msgBuffer.Put((byte)ChatMessageType.SayAll);
+            msgBuffer.Put(player.Handle + " HAS JOINED THE ADVENTURE!");
+            SendToAll(msgBuffer, NetChannel.ReliableInOrder3);
+        }
+
+        public void BroadcastGameOver()
+        {
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.GameOver);
+            msgBuffer.Put((byte)winningTeam);
+            SendToAll(msgBuffer, NetChannel.ReliableUnordered);
+        }
+
+        public void SendPlayerLeft(ServerPlayer player, string reason)
+        {
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerLeft);
+            msgBuffer.Put((uint)player.ID);
+            SendToAll(msgBuffer, NetChannel.ReliableInOrder2, player);
+
+            // Send out a chat message.
+            msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.ChatMessage);
+            msgBuffer.Put((byte)ChatMessageType.SayAll);
+            msgBuffer.Put(player.Handle + " " + reason);
+            SendToAll(msgBuffer, NetChannel.ReliableInOrder3);
+        }
+
+        public void SendPlayerSetTeam(ServerPlayer player)
+        {
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerSetTeam);
+            msgBuffer.Put((uint)player.ID);
+            msgBuffer.Put((byte)player.Team);
+            SendToAll(msgBuffer, NetChannel.ReliableInOrder2);
+        }
+
+        public void SendPlayerDead(ServerPlayer player)
+        {
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerDead);
+            msgBuffer.Put((uint)player.ID);
+            SendToAll(msgBuffer, NetChannel.ReliableInOrder2);
+        }
+
+        public void SendPlayerAlive(ServerPlayer player)
+        {
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerAlive);
+            msgBuffer.Put((uint)player.ID);
+            SendToAll(msgBuffer, NetChannel.ReliableInOrder2);
+        }
+
+        public void PlaySound(InfiniminerSound sound, Vector3 position)
+        {
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlaySound);
+            msgBuffer.Put((byte)sound);
+            msgBuffer.Put(true);
+            msgBuffer.Put(position);
+            SendToAll(msgBuffer, NetChannel.ReliableUnordered);
+        }
+    }
+}

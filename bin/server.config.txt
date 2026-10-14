@@ -1,9 +1,16 @@
 servername = Unnamed Server
 maxplayers = 16
 
-# Before making your server public, MAKE SURE THAT PORT 5565 (TCP/UDP) IS ACCESSIBLE FROM THE OUTSIDE OF YOUR NETWORK!
+# Before making your server public, MAKE SURE THAT PORT 5565 (UDP) IS ACCESSIBLE FROM THE OUTSIDE OF YOUR NETWORK!
 # For most users, this means setting the port to be forwarded by your router through your router control interface.
 public = false
+
+# The port to listen on (UDP). LAN discovery only finds servers on the default port, 5565.
+port = 5565
+
+# Public servers are announced to this server list URL. The original list (apps.keithholman.net) is gone, so it
+# is empty by default. Example: serverlist = http://example.com/post
+serverlist = 
 
 # This value specifies the amount of cash required for a team to win the game.
 winningcash = 10000

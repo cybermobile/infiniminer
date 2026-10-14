@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>Infiniminer</AssemblyName>
+    <ApplicationIcon>..\..\code\InfiniminerClient\Game.ico</ApplicationIcon>
+    <RollForward>Major</RollForward>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.4.1" />
+    <PackageReference Include="FontStashSharp.MonoGame" Version="1.3.10" />
+    <PackageReference Include="NLayer" Version="1.16.0" />
+    <PackageReference Include="TextCopy" Version="6.2.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Infiniminer.Shared\Infiniminer.Shared.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Game assets are shared with the original XNA project; they are loaded at runtime, no content pipeline needed. -->
+    <None Include="..\..\code\InfiniminerClient\Content\**\*.png;..\..\code\InfiniminerClient\Content\**\*.wav;..\..\code\InfiniminerClient\Content\**\*.mp3"
+          Exclude="..\..\code\InfiniminerClient\Content\menus\tex_menu_title_old.png;..\..\code\InfiniminerClient\Content\obj\**"
+          Link="Content\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fonts\**" Link="Content\fonts\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\bin\client.config.txt" Link="client.config.txt" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="..\..\code\InfiniminerClient\Game.ico" LogicalName="Icon.ico" />
+  </ItemGroup>
+</Project>

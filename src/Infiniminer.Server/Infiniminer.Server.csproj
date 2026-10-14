@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>InfiniminerServer</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Infiniminer.Shared\Infiniminer.Shared.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\bin\server.config.txt" Link="server.config.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\bin\banlist.txt" Link="banlist.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

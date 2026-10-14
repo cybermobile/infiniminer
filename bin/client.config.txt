@@ -17,3 +17,7 @@ volume = 1.0
 
 # If this flag is true, all sound for the game will be disabled. This should fix all AllocateFormatAndData crashes.
 nosound = false
+
+# Public server list to show in the server browser (LAN servers are always found automatically).
+# Example: serverlist = http://example.com/plain
+serverlist = 
