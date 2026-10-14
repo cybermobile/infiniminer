@@ -194,6 +194,11 @@ namespace Infiniminer
             return !BlockPassibleForPlayer(BlockAtPoint(point));
         }
 
+        public bool SolidAtPointForPlayer(BlockType blockType)
+        {
+            return !BlockPassibleForPlayer(blockType);
+        }
+
         private bool BlockPassibleForPlayer(BlockType blockType)
         {
             if (blockType == BlockType.None)

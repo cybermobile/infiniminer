@@ -244,50 +244,24 @@ namespace Infiniminer.States
 
         private bool TryToMoveTo(Vector3 moveVector, GameTime gameTime)
         {
-            // Build a "test vector" that is a little longer than the move vector.
-            float moveLength = moveVector.Length();
-            Vector3 testVector = moveVector;
-            testVector.Normalize();
-            testVector = testVector * (moveLength + 0.1f);
-
-            // Apply this test vector.
-            Vector3 movePosition = _P.playerPosition + testVector;
-            Vector3 midBodyPoint = movePosition + new Vector3(0, -0.7f, 0);
-            Vector3 lowerBodyPoint = movePosition + new Vector3(0, -1.4f, 0);
-
-            if (!_P.blockEngine.SolidAtPointForPlayer(movePosition) && !_P.blockEngine.SolidAtPointForPlayer(lowerBodyPoint) && !_P.blockEngine.SolidAtPointForPlayer(midBodyPoint))
+            Vector3 target = _P.playerPosition + moveVector;
+            List<BlockType> obstacles = PlayerCollision.Obstacles(_P.blockEngine.BlockAtPoint,
+                block => !_P.blockEngine.SolidAtPointForPlayer(block), _P.playerPosition, target);
+            if (obstacles.Count == 0)
             {
-                _P.playerPosition = _P.playerPosition + moveVector;
+                _P.playerPosition = target;
                 return true;
             }
 
-            // It"s solid there, so while we can"t move we have officially collided with it.
-            BlockType lowerBlock = _P.blockEngine.BlockAtPoint(lowerBodyPoint);
-            BlockType midBlock = _P.blockEngine.BlockAtPoint(midBodyPoint);
-            BlockType upperBlock = _P.blockEngine.BlockAtPoint(movePosition);
-
-            //// It"s solid there, so see if it"s a spike block. If so, touching it will kill us!
-            //if (upperBlock == BlockType.Shock || lowerBlock == BlockType.Shock || midBlock == BlockType.Shock)
-            //{
-            //    _P.KillPlayer("WAS ELECTROCUTED!");
-            //    return true;
-            //}
-
-            // It"s solid there, so see if it"s a lava block. If so, touching it will kill us!
-            if (upperBlock == BlockType.Lava || lowerBlock == BlockType.Lava || midBlock == BlockType.Lava)
+            // It's solid there, so see if it's a lava block. If so, touching it will kill us!
+            if (obstacles.Contains(BlockType.Lava))
             {
                 _P.KillPlayer("WAS INCINERATED BY LAVA!");
                 return true;
             }
 
-            //// If it"s our home block, deposit our money.
-            //if ((upperBlock == BlockType.HomeRed || lowerBlock == BlockType.HomeRed || midBlock == BlockType.HomeRed) && _P.playerTeam == PlayerTeam.Red)
-            //    _P.DepositLoot();
-            //if ((upperBlock == BlockType.HomeBlue || lowerBlock == BlockType.HomeBlue || midBlock == BlockType.HomeBlue) && _P.playerTeam == PlayerTeam.Blue)
-            //    _P.DepositLoot();
-
-            // If it"s a ladder, move up.
-            if (upperBlock == BlockType.Ladder || lowerBlock == BlockType.Ladder || midBlock == BlockType.Ladder)
+            // If it's a ladder, move up.
+            if (obstacles.Contains(BlockType.Ladder))
             {
                 _P.playerVelocity.Y = CLIMBVELOCITY;
                 Vector3 footPosition = _P.playerPosition + new Vector3(0f, -1.5f, 0f);
@@ -296,7 +270,7 @@ namespace Infiniminer.States
                 return true;
             }
 
-            return false;         
+            return false;
         }
 
         public override void OnRenderAtEnter(GraphicsDevice graphicsDevice)

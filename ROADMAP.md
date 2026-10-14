@@ -35,12 +35,13 @@ The original server trusted almost everything the client said.
 - [x] A replacement public server list service (`src/Infiniminer.ServerList`): the original /post and /plain
       protocol plus a port field, expiry, per-address limits, and a web page listing the servers
 
-## 5. Gameplay depth
+## 5. Gameplay depth — done
 - [x] Match timer (`timelimit`, with overtime on a tie) and win target scaled to player count
       (`winningcashperplayer`), shown on the HUD and scoreboard
 - [x] Team auto-balance (`autobalance`)
 - [x] Larger worlds: `mapsize` = 64, 96 or 128; the server sends the size first and map chunks are compressed
-- [ ] Better player collision (currently three sample points)
+- [x] Better player collision: the body has width (corners of a 0.4-block footprint are tested), so it can't
+      slip through diagonal gaps or press the camera into walls
 
 ## 6. Feel and polish
 - [ ] Instant local feedback for digging and building
