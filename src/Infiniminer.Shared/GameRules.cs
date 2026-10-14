@@ -25,7 +25,7 @@ namespace Infiniminer
                 case PlayerClass.Prospector:
                     return new[] { PlayerTools.Pickaxe, PlayerTools.ConstructionGun, PlayerTools.ProspectingRadar };
                 case PlayerClass.Miner:
-                    return new[] { PlayerTools.Pickaxe, PlayerTools.ConstructionGun };
+                    return new[] { PlayerTools.Pickaxe, PlayerTools.Drill, PlayerTools.ConstructionGun };
                 case PlayerClass.Engineer:
                     return new[] { PlayerTools.Pickaxe, PlayerTools.ConstructionGun, PlayerTools.DeconstructionGun };
                 case PlayerClass.Sapper:
@@ -57,7 +57,8 @@ namespace Infiniminer
                                    BlockType.Jump,
                                    BlockType.Shock,
                                    red ? BlockType.BeaconRed : BlockType.BeaconBlue,
-                                   red ? BlockType.BankRed : BlockType.BankBlue };
+                                   red ? BlockType.BankRed : BlockType.BankBlue,
+                                   BlockType.Teleporter };
                 case PlayerClass.Sapper:
                     return new[] { red ? BlockType.SolidRed : BlockType.SolidBlue,
                                    red ? BlockType.TransRed : BlockType.TransBlue,
@@ -77,6 +78,7 @@ namespace Infiniminer
                 case PlayerTools.ConstructionGun: return 0.5f;
                 case PlayerTools.DeconstructionGun: return 0.5f;
                 case PlayerTools.ProspectingRadar: return 0.5f;
+                case PlayerTools.Drill: return 0.9f;
                 default: return 0;
             }
         }

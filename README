@@ -52,6 +52,8 @@ executable. Other new settings:
   port        (server) UDP port to listen on, default 5565. LAN discovery only looks on 5565.
   serverlist  (client and server) URL of a public server list. The original list service is gone, so
               this is empty by default and only LAN/direct connect are used.
+  homebases   (server) give each team a home base to spawn at (default false).
+  shocktouch  (server) shock blocks kill on any touch, not just from below (default false).
 
 Fonts: the original used the 04b08 and 04b03b bitmap fonts by Yuji Oshimoto, which are not
 redistributed here (http://www.dsg4.com/04/extra/bitmap/). The game ships with the look-alike
@@ -74,8 +76,9 @@ WHAT CHANGED IN THE PORT
                            bloom is done with blend-state passes), so no shader compiler is needed
   WinForms/Win32 calls  -> cross-platform equivalents (window focus, clipboard, error reporting)
 
-The game rules, world generator, physics, classes, tools and menus are unchanged. Some fixes were made
-along the way:
+New in the port: engineers can build linked teleporters, miners carry a drill that bores through rock,
+and servers can enable team home bases (see ROADMAP.md). Otherwise the game rules, world generator,
+physics, classes, tools and menus are unchanged. Some fixes were made along the way:
 
   - The server is authoritative instead of trusting the client (see ROADMAP.md): it checks movement
     (speed, walls, flying) and corrects cheaters, picks respawn points, decides deaths (lava, shock,
@@ -89,7 +92,7 @@ along the way:
   - Connection errors (version mismatch, banned, server full, disconnects) are shown in the server
     browser instead of a Windows message box.
 
-The network protocol is not compatible with v1.5, so the version is now v1.7.
+The network protocol is not compatible with v1.5, so the version is now v1.8.
 
 
 DEVELOPMENT

@@ -88,6 +88,7 @@ namespace Infiniminer
             blockIcons[BlockType.BeaconRed] = assets.Texture("icons/tex_icon_beacon");
             blockIcons[BlockType.BeaconBlue] = assets.Texture("icons/tex_icon_beacon");
             blockIcons[BlockType.Road] = assets.Texture("icons/tex_icon_road");
+            blockIcons[BlockType.Teleporter] = assets.Texture("icons/tex_icon_teleporter");
             blockIcons[BlockType.None] = assets.Texture("icons/tex_icon_deconstruction");
 
             // Load fonts.

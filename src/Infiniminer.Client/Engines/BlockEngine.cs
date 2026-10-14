@@ -117,6 +117,7 @@ namespace Infiniminer
             blockTextures[(byte)BlockTexture.Diamond] = new IMTexture(assets.Texture("blocks/tex_block_diamond"));
             blockTextures[(byte)BlockTexture.HomeRed] = new IMTexture(assets.Texture("blocks/tex_block_home_red"));
             blockTextures[(byte)BlockTexture.HomeBlue] = new IMTexture(assets.Texture("blocks/tex_block_home_blue"));
+            blockTextures[(byte)BlockTexture.HomeTop] = new IMTexture(assets.Texture("blocks/tex_block_home_top"));
             blockTextures[(byte)BlockTexture.SolidRed] = new IMTexture(assets.Texture("blocks/tex_block_red"));
             blockTextures[(byte)BlockTexture.SolidBlue] = new IMTexture(assets.Texture("blocks/tex_block_blue"));
             blockTextures[(byte)BlockTexture.Ladder] = new IMTexture(assets.Texture("blocks/tex_block_ladder"));

@@ -10,6 +10,8 @@ namespace Infiniminer
         public uint OreFactor = 10;
         public bool SandboxMode = false;
         public int Port = GameConstants.DefaultPort;
+        public bool HomeBases = false;      // each team gets a base to spawn at
+        public bool ShockTouch = false;     // shock blocks kill on any touch, not just from below
 
         // The original public server list (apps.keithholman.net) no longer exists, so listing is opt-in
         // through this setting. The endpoint receives the same form POST the original server sent.
@@ -27,6 +29,8 @@ namespace Infiniminer
             config.ServerName = dataFile.GetString("servername", config.ServerName);
             config.SandboxMode = dataFile.GetBool("sandbox", config.SandboxMode);
             config.Port = dataFile.GetInt("port", config.Port);
+            config.HomeBases = dataFile.GetBool("homebases", config.HomeBases);
+            config.ShockTouch = dataFile.GetBool("shocktouch", config.ShockTouch);
             config.ServerListUrl = dataFile.GetString("serverlist", config.ServerListUrl);
             return config;
         }

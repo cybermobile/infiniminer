@@ -23,7 +23,7 @@ namespace Infiniminer.Tests
             Directory.CreateDirectory(dataDirectory);
 
             CaveGenerator.SetSeed(42);
-            ServerConfig config = new ServerConfig { Port = 0, SandboxMode = true, ServerName = "Test Server" };
+            ServerConfig config = new ServerConfig { Port = 0, SandboxMode = true, ServerName = "Test Server", HomeBases = true, ShockTouch = true };
             server = new InfiniminerServer(config, dataDirectory);
             server.Log = line => serverLog.Enqueue(line);
             Assert.True(server.Initialize());
@@ -58,6 +58,7 @@ namespace Infiniminer.Tests
             public Vector3 Position;
             public byte Epoch;
             public int PositionsReceived;
+            public PositionReason LastPositionReason;
 
             public Bot()
             {
@@ -92,6 +93,7 @@ namespace Infiniminer.Tests
                 {
                     Position = reader.GetVector3();
                     Epoch = reader.GetByte();
+                    LastPositionReason = (PositionReason)reader.GetByte();
                     PositionsReceived++;
                 }
                 else if (type == InfiniminerMessage.PlayerJoined)
@@ -415,6 +417,99 @@ namespace Infiniminer.Tests
             bot.Net.PollEvents();
             int delivered = bot.MessagesOfType(InfiniminerMessage.ChatMessage).Count(r => { r.GetByte(); return r.GetString().StartsWith("Bot (ALL): spam"); });
             Assert.InRange(delivered, 5, 6);
+        }
+
+        static IEnumerable<(int x, int y, int z)> SurfaceDirtColumns(Bot bot)
+        {
+            for (int x = 2; x < 62; x++)
+                for (int z = 2; z < 62; z++)
+                    for (int y = 61; y > 1; y--)
+                    {
+                        if (bot.Map[x, y, z] == BlockType.None)
+                            continue;
+                        if (bot.Map[x, y, z] == BlockType.Dirt && Enumerable.Range(1, 5).All(dy => y + dy >= 63 || bot.Map[x, y + dy, z] == BlockType.None))
+                            yield return (x, y, z);
+                        break;
+                    }
+        }
+
+        // Builds a block on top of a column by standing a little above it and aiming down.
+        void BuildOnTop(Bot bot, (int x, int y, int z) column, BlockType blockType)
+        {
+            Vector3 above = new Vector3(column.x + 0.5f, column.y + 4.45f, column.z + 0.5f);
+            Teleport(bot, above);
+            UseTool(bot, above, -Vector3.UnitY, PlayerTools.ConstructionGun, blockType);
+            WaitFor(bot, () => HasBlockSet(bot, column.x, column.y + 1, column.z, blockType), "building " + blockType);
+        }
+
+        [Fact]
+        public void TeleportersLinkInBuildOrder()
+        {
+            using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Engineer);
+            List<(int x, int y, int z)> columns = SurfaceDirtColumns(bot).ToList();
+            (int x, int y, int z) a = columns[0];
+            (int x, int y, int z) b = columns.First(c => Math.Abs(c.x - a.x) + Math.Abs(c.z - a.z) > 10);
+            BuildOnTop(bot, a, BlockType.Teleporter);
+            BuildOnTop(bot, b, BlockType.Teleporter);
+
+            // Step onto the first teleporter...
+            Vector3 onA = StandingOn(a.x, a.y + 1, a.z);
+            Teleport(bot, onA);
+            int before = bot.PositionsReceived;
+            bot.SendPosition(onA);
+
+            // ...and arrive on top of the second.
+            WaitFor(bot, () => bot.PositionsReceived > before, "teleporter");
+            Assert.Equal(PositionReason.Teleport, bot.LastPositionReason);
+            Assert.Equal(StandingOn(b.x, b.y + 1, b.z), bot.Position);
+        }
+
+        [Fact]
+        public void TheDrillDigsRockButThePickaxeDoesNot()
+        {
+            using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Miner);
+            (int x, int y, int z) rock = (0, 0, 0);
+            for (int x = 2; x < 62 && rock.x == 0; x++)
+                for (int y = 2; y < 59 && rock.x == 0; y++)
+                    for (int z = 2; z < 62 && rock.x == 0; z++)
+                        if (bot.Map[x, y, z] == BlockType.Rock && bot.Map[x, y + 1, z] == BlockType.None && bot.Map[x, y + 2, z] == BlockType.None && bot.Map[x, y + 3, z] == BlockType.None)
+                            rock = (x, y, z);
+            Assert.NotEqual(0, rock.x);
+
+            Vector3 standing = StandingOn(rock.x, rock.y, rock.z);
+            Teleport(bot, standing);
+            UseTool(bot, standing, -Vector3.UnitY, PlayerTools.Pickaxe);
+            Thread.Sleep(300);
+            bot.Net.PollEvents();
+            Assert.False(HasBlockSet(bot, rock.x, rock.y, rock.z, BlockType.None));
+
+            UseTool(bot, standing, -Vector3.UnitY, PlayerTools.Drill);
+            WaitFor(bot, () => HasBlockSet(bot, rock.x, rock.y, rock.z, BlockType.None), "drilled rock");
+        }
+
+        [Fact]
+        public void PlayersSpawnAtTheirHomeBase()
+        {
+            using Bot bot = JoinGame(PlayerTeam.Blue, PlayerClass.Miner);
+            Assert.Equal(BlockType.HomeBlue, bot.Map[5, 55, 5]);
+            Assert.Equal(BlockType.HomeRed, bot.Map[58, 55, 58]);
+            Assert.Equal(BlockType.Metal, bot.Map[5, 54, 5]);
+            Assert.InRange(bot.Position.X, 3, 8);
+            Assert.InRange(bot.Position.Z, 3, 8);
+            Assert.Equal(56.45f, bot.Position.Y, 2);
+            Assert.Contains(bot.MessagesOfType(InfiniminerMessage.SetBeacon), r => { r.GetVector3(); return r.GetString() == "HOME"; });
+        }
+
+        [Fact]
+        public void ShockBlocksKillOnTouchWhenEnabled()
+        {
+            using Bot bot = JoinGame(PlayerTeam.Red, PlayerClass.Engineer);
+            (int x, int y, int z) column = SurfaceDirtColumns(bot).First(c => c.x > 15 && c.x < 50);
+            BuildOnTop(bot, column, BlockType.Shock);
+
+            // Stand right next to it, brushing against its side.
+            Teleport(bot, new Vector3(column.x + 1.3f, column.y + 1.5f - GameRules.MidBodyOffset, column.z + 0.5f));
+            WaitFor(bot, () => bot.WasKilled("WAS ELECTROCUTED!"), "electrocution");
         }
 
         [Fact]

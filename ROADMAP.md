@@ -22,12 +22,14 @@ The original server trusted almost everything the client said.
 - [x] Resizable window; menus scale to fit the window
 - [x] HUD scaling for high-resolution screens
 
-## 3. Unfinished features from the original
-- [ ] Teleporter blocks (textures, sound and commented-out code exist)
-- [ ] Shock blocks kill on touch (commented out in the original)
-- [ ] Team home bases (block types and generator code commented out)
-- [ ] Drill tool (player sprites exist, no tool uses them)
-- [ ] Metal block (defined but never placed)
+## 3. Unfinished features from the original — done
+- [x] Teleporter blocks: engineers build them (200 ore, the price on the original icon); stepping onto one
+      takes you to the next teleporter your team built, in build order
+- [x] Shock blocks kill on touch: `shocktouch = true` server option (off by default, as in v1.5)
+- [x] Team home bases: `homebases = true` server option; a crater with a metal floor and the team's base
+      terminal in opposite corners, shown as HOME on the radar; players spawn there
+- [x] Drill tool: miners carry it; slower than the pickaxe, but bores through rock
+- [x] Metal block: the indestructible floor of home bases
 
 ## 4. Finding games
 - [ ] A replacement public server list service

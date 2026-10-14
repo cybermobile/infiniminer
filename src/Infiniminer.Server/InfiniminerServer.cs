@@ -281,7 +281,8 @@ namespace Infiniminer
                             else
                             {
                                 target.Position = new Vector3(x, y, z);
-                                SendSetPosition(target, target.Position);
+                                target.OnTeleporter = null;
+                                SendSetPosition(target, target.Position, PositionReason.Teleport);
                             }
                         }
                         else
@@ -349,6 +350,14 @@ namespace Infiniminer
             }
         }
 
+        readonly Dictionary<PlayerTeam, List<(int x, int y, int z)>> teleporters = new Dictionary<PlayerTeam, List<(int x, int y, int z)>>
+        {
+            [PlayerTeam.None] = new List<(int x, int y, int z)>(),
+            [PlayerTeam.Red] = new List<(int x, int y, int z)>(),
+            [PlayerTeam.Blue] = new List<(int x, int y, int z)>(),
+        };
+        readonly Dictionary<PlayerTeam, (int x, int y, int z)> homeBases = new Dictionary<PlayerTeam, (int x, int y, int z)>();
+
         List<string> beaconIDList = new List<string>();
         Dictionary<Vector3, Beacon> beaconList = new Dictionary<Vector3, Beacon>();
         Random randGen = new Random();
@@ -394,6 +403,12 @@ namespace Infiniminer
                 SendSetBeacon(new Vector3(x, y + 1, z), "", PlayerTeam.None);
             }
 
+            // Each team's teleporters are linked in the order they were built.
+            if (blockList[x, y, z] == BlockType.Teleporter)
+                teleporters[blockCreatorTeam[x, y, z]].Remove((x, y, z));
+            if (blockType == BlockType.Teleporter)
+                teleporters[team].Add((x, y, z));
+
             blockList[x, y, z] = blockType;
             blockCreatorTeam[x, y, z] = team;
 
@@ -426,6 +441,13 @@ namespace Infiniminer
                         blockList[i, MAPSIZE - 1 - k, j] = worldData[i, j, k];
                         blockCreatorTeam[i, j, k] = PlayerTeam.None;
                     }
+
+            // Team home bases in opposite corners, as the original generator once had.
+            if (config.HomeBases)
+            {
+                AddHomeBase(MAPSIZE - 6, MAPSIZE - 6, PlayerTeam.Red);
+                AddHomeBase(5, 5, PlayerTeam.Blue);
+            }
 
             // Initialize the server.
             listener = new EventBasedNetListener();
@@ -715,7 +737,10 @@ namespace Infiniminer
                         switch (playerTool)
                         {
                             case PlayerTools.Pickaxe:
-                                UsePickaxe(player, playerPosition, playerHeading);
+                                UsePickaxe(player, playerPosition, playerHeading, false);
+                                break;
+                            case PlayerTools.Drill:
+                                UsePickaxe(player, playerPosition, playerHeading, true);
                                 break;
                             case PlayerTools.ConstructionGun:
                                 if (Array.IndexOf(GameRules.GetBlocks(player.Class, player.Team), blockType) < 0)
@@ -882,7 +907,45 @@ namespace Infiniminer
 
             player.Position = position;
             if (result.FallHeight >= MovementValidator.LethalFallHeight)
+            {
                 KillPlayer(player, "WAS KILLED BY GRAVITY!");
+                return;
+            }
+            CheckTeleporter(player);
+        }
+
+        // Stepping onto one of your team's teleporters takes you to the next one your team built.
+        void CheckTeleporter(ServerPlayer player)
+        {
+            Vector3 foot = player.Position + new Vector3(0, GameRules.FootOffset, 0);
+            (int x, int y, int z) block = (GameConstants.ToBlock(foot.X), GameConstants.ToBlock(foot.Y), GameConstants.ToBlock(foot.Z));
+            bool onOwnTeleporter = InBounds(block.x, block.y, block.z)
+                && blockList[block.x, block.y, block.z] == BlockType.Teleporter
+                && blockCreatorTeam[block.x, block.y, block.z] == player.Team;
+            if (!onOwnTeleporter)
+            {
+                player.OnTeleporter = null;
+                return;
+            }
+            if (player.OnTeleporter == block)
+                return; // still standing on the one we arrived on
+            player.OnTeleporter = block;
+
+            List<(int x, int y, int z)> network = teleporters[player.Team];
+            int index = network.IndexOf(block);
+            if (index < 0 || network.Count < 2)
+                return;
+            (int x, int y, int z) destination = network[(index + 1) % network.Count];
+            Vector3 arrival = new Vector3(destination.x + 0.5f, destination.y + 2.45f, destination.z + 0.5f);
+            if (!GameRules.IsPassable(BlockAtPoint(arrival), player.Team)
+                || !GameRules.IsPassable(BlockAtPoint(arrival + new Vector3(0, GameRules.LowerBodyOffset, 0)), player.Team))
+                return; // blocked exit
+
+            PlaySound(InfiniminerSound.Teleporter, player.Position);
+            player.Position = arrival;
+            player.OnTeleporter = destination;
+            SendSetPosition(player, arrival, PositionReason.Teleport);
+            PlaySound(InfiniminerSound.Teleporter, arrival);
         }
 
         void ResendBlocksAround(ServerPlayer player, Vector3 point)
@@ -911,16 +974,17 @@ namespace Infiniminer
                     + FormattableString.Invariant($" [last valid {player.Position.X:0.00},{player.Position.Y:0.00},{player.Position.Z:0.00}]"));
                 player.LastCorrectionLog = Now;
             }
-            SendSetPosition(player, player.Position);
+            SendSetPosition(player, player.Position, PositionReason.Correction);
         }
 
-        void SendSetPosition(ServerPlayer player, Vector3 position)
+        void SendSetPosition(ServerPlayer player, Vector3 position, PositionReason reason)
         {
             player.PositionEpoch++;
             player.Movement.Reset(position, Now);
             NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.PlayerSetPosition);
             msgBuffer.Put(position);
             msgBuffer.Put(player.PositionEpoch);
+            msgBuffer.Put((byte)reason);
             player.Peer.Send(msgBuffer, NetChannel.ReliableInOrder2);
         }
 
@@ -950,8 +1014,8 @@ namespace Infiniminer
         public void RespawnPlayer(ServerPlayer player)
         {
             ConsoleWrite("PLAYER_ALIVE: " + player.Handle);
-            player.Position = FindSpawnPosition();
-            SendSetPosition(player, player.Position);
+            player.Position = FindHomeSpawn(player.Team) ?? FindSpawnPosition();
+            SendSetPosition(player, player.Position, PositionReason.Respawn);
 
             player.Ore = 0;
             player.Cash = 0;
@@ -959,6 +1023,47 @@ namespace Infiniminer
             player.Alive = true;
             SendResourceUpdate(player);
             SendPlayerAlive(player);
+        }
+
+        // A crater at ground level with an indestructible metal floor and the team's home block in the middle.
+        void AddHomeBase(int cx, int cz, PlayerTeam team)
+        {
+            int cy = MAPSIZE - 1 - GameConstants.GroundLevel;
+            for (int x = cx - 4; x <= cx + 4; x++)
+                for (int y = cy - 4; y <= cy + 4; y++)
+                    for (int z = cz - 4; z <= cz + 4; z++)
+                    {
+                        if (!InBounds(x, y, z) || (x - cx) * (x - cx) + (y - cy) * (y - cy) + (z - cz) * (z - cz) >= 16)
+                            continue;
+                        blockList[x, y, z] = y >= cy ? BlockType.None : y == cy - 1 ? BlockType.Metal : BlockType.Dirt;
+                        blockCreatorTeam[x, y, z] = PlayerTeam.None;
+                    }
+            blockList[cx, cy, cz] = team == PlayerTeam.Red ? BlockType.HomeRed : BlockType.HomeBlue;
+            blockCreatorTeam[cx, cy, cz] = team;
+            homeBases[team] = (cx, cy, cz);
+
+            // Shown on the team's radar like a beacon (beacons are reported one block up).
+            beaconList[new Vector3(cx, cy, cz)] = new Beacon { ID = "HOME", Team = team };
+        }
+
+        // With home bases, players spawn on their team's base floor (unless something has made it unsafe).
+        Vector3? FindHomeSpawn(PlayerTeam team)
+        {
+            if (!homeBases.TryGetValue(team, out (int x, int y, int z) home))
+                return null;
+            for (int attempt = 0; attempt < 20; attempt++)
+            {
+                int x = home.x + randGen.Next(-2, 3), z = home.z + randGen.Next(-2, 3);
+                if (x == home.x && z == home.z)
+                    continue;
+                Vector3 position = new Vector3(x + 0.5f, home.y + 1.45f, z + 0.5f);
+                BlockType floor = BlockAtPoint(position + new Vector3(0, GameRules.FootOffset, 0));
+                if (floor != BlockType.None && floor != BlockType.Lava
+                    && BlockAtPoint(position) == BlockType.None
+                    && BlockAtPoint(position + new Vector3(0, GameRules.LowerBodyOffset, 0)) == BlockType.None)
+                    return position;
+            }
+            return null;
         }
 
         // Drop the player a few blocks above a random safe spot on the surface (the client used to choose this).
@@ -991,10 +1096,23 @@ namespace Infiniminer
                 || BlockAtPoint(position + new Vector3(0, GameRules.MidBodyOffset, 0)) == BlockType.Lava
                 || BlockAtPoint(position + new Vector3(0, GameRules.LowerBodyOffset, 0)) == BlockType.Lava)
                 KillPlayer(player, "WAS INCINERATED BY LAVA!");
-            else if (BlockAtPoint(position + new Vector3(0, GameRules.HeadOffset, 0)) == BlockType.Shock)
+            else if (BlockAtPoint(position + new Vector3(0, GameRules.HeadOffset, 0)) == BlockType.Shock
+                || (config.ShockTouch && TouchingShock(position)))
                 KillPlayer(player, "WAS ELECTROCUTED!");
             else if (position.Y < -30)
                 KillPlayer(player, "WAS KILLED BY MISADVENTURE!");
+        }
+
+        // Standing on a shock block, or brushing against one with any part of the body.
+        bool TouchingShock(Vector3 position)
+        {
+            if (BlockAtPoint(position + new Vector3(0, GameRules.FootOffset, 0)) == BlockType.Shock)
+                return true;
+            foreach (float offset in new[] { 0f, GameRules.MidBodyOffset, GameRules.LowerBodyOffset })
+                foreach (Vector3 side in new[] { Vector3.UnitX, -Vector3.UnitX, Vector3.UnitZ, -Vector3.UnitZ })
+                    if (BlockAtPoint(position + new Vector3(0, offset, 0) + side * 0.6f) == BlockType.Shock)
+                        return true;
+            return false;
         }
 
         bool NearOwnBank(ServerPlayer player)
@@ -1103,7 +1221,8 @@ namespace Infiniminer
             return false;
         }
 
-        public void UsePickaxe(ServerPlayer player, Vector3 playerPosition, Vector3 playerHeading)
+        // The drill digs everything the pickaxe does, plus rock, but more slowly.
+        public void UsePickaxe(ServerPlayer player, Vector3 playerPosition, Vector3 playerHeading, bool drill)
         {
             player.QueueAnimationBreak = true;
 
@@ -1150,7 +1269,13 @@ namespace Infiniminer
                     giveCash = 1000;
                     sound = InfiniminerSound.DigMetal;
                     break;
+
+                case BlockType.Rock:
+                    removeBlock = drill;
+                    break;
             }
+            if (drill)
+                sound = InfiniminerSound.Drill;
 
             if (giveOre > 0)
             {
@@ -1272,7 +1397,8 @@ namespace Infiniminer
                 blockType == BlockType.BeaconRed ||
                 blockType == BlockType.BeaconBlue ||
                 blockType == BlockType.TransBlue ||
-                blockType == BlockType.TransRed))
+                blockType == BlockType.TransRed ||
+                blockType == BlockType.Teleporter))
                 actionFailed = true;
 
             if (actionFailed)
@@ -1361,6 +1487,7 @@ namespace Infiniminer
                             case BlockType.Explosive:
                             case BlockType.Lava:
                             case BlockType.Road:
+                            case BlockType.Teleporter:
                                 destroyBlock = true;
                                 break;
                         }

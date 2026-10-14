@@ -539,7 +539,8 @@ namespace Infiniminer
                     {
                         Vector3 position = msgBuffer.GetXnaVector3();
                         byte epoch = msgBuffer.GetByte();
-                        propertyBag.SetPositionFromServer(position, epoch);
+                        PositionReason reason = (PositionReason)msgBuffer.GetByte();
+                        propertyBag.SetPositionFromServer(position, epoch, reason);
                     }
                     break;
 

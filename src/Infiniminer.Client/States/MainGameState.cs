@@ -78,9 +78,12 @@ namespace Infiniminer.States
                 mouseInitialized = false;
 
             // Digging like a freaking terrier! Now for everyone!
-            if (mouseInitialized && mouseState.LeftButton == ButtonState.Pressed && !_P.playerDead && _P.playerToolCooldown == 0 && _P.playerTools[_P.playerToolSelected] == PlayerTools.Pickaxe)
+            if (mouseInitialized && mouseState.LeftButton == ButtonState.Pressed && !_P.playerDead && _P.playerToolCooldown == 0)
             {
-                _P.FirePickaxe();
+                if (_P.playerTools[_P.playerToolSelected] == PlayerTools.Pickaxe)
+                    _P.FirePickaxe();
+                else if (_P.playerTools[_P.playerToolSelected] == PlayerTools.Drill)
+                    _P.FireDrill();
             }
 
             // Prospector radar stuff.

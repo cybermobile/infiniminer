@@ -171,6 +171,9 @@ namespace Infiniminer
                 case PlayerTools.ProspectingRadar:
                     textureName += "radar";
                     break;
+                case PlayerTools.Drill:
+                    textureName += "drill";
+                    break;
                 default:
                     textureName += "pickaxe";
                     break;

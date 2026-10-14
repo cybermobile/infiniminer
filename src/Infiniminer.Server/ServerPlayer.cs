@@ -38,6 +38,7 @@ namespace Infiniminer
         public readonly RateLimiter SoundLimiter = new RateLimiter(4, 4);
         public Dictionary<PlayerTools, RateLimiter> ToolLimiters = new Dictionary<PlayerTools, RateLimiter>();
         public double LastCorrectionLog = double.MinValue;
+        public (int x, int y, int z)? OnTeleporter;   // the teleporter the player is standing on, if any
 
         public void SetClass(PlayerClass playerClass)
         {

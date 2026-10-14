@@ -143,6 +143,7 @@ namespace Infiniminer
                     soundList[InfiniminerSound.RadarHigh] = assets.Sound("sounds/radar-high");
                     soundList[InfiniminerSound.RadarLow] = assets.Sound("sounds/radar-low");
                     soundList[InfiniminerSound.RadarSwitch] = assets.Sound("sounds/switch");
+                    soundList[InfiniminerSound.Drill] = assets.Sound("sounds/drill");
                 }
                 catch (Exception)
                 {
@@ -206,8 +207,13 @@ namespace Infiniminer
         }
 
         // The server has put us somewhere: a respawn, or a correction of a move it didn't accept.
-        public void SetPositionFromServer(Vector3 position, byte epoch)
+        public void SetPositionFromServer(Vector3 position, byte epoch, PositionReason reason)
         {
+            if (reason == PositionReason.Teleport)
+            {
+                screenEffect = ScreenEffect.Teleport;
+                screenEffectCounter = 0;
+            }
             playerPosition = position;
             playerVelocity = Vector3.Zero;
             positionEpoch = epoch;
@@ -376,6 +382,21 @@ namespace Infiniminer
             msgBuffer.Put(playerPosition);
             msgBuffer.Put(playerCamera.GetLookVector());
             msgBuffer.Put((byte)PlayerTools.ProspectingRadar);
+            msgBuffer.Put((byte)BlockType.None);
+            Send(msgBuffer, NetChannel.ReliableUnordered);
+        }
+
+        public void FireDrill()
+        {
+            if (!IsConnected)
+                return;
+
+            playerToolCooldown = GetToolCooldown(PlayerTools.Drill);
+
+            NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.UseTool);
+            msgBuffer.Put(playerPosition);
+            msgBuffer.Put(playerCamera.GetLookVector());
+            msgBuffer.Put((byte)PlayerTools.Drill);
             msgBuffer.Put((byte)BlockType.None);
             Send(msgBuffer, NetChannel.ReliableUnordered);
         }

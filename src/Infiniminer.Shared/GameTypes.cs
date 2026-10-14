@@ -27,6 +27,9 @@ namespace Infiniminer
         Lava,
         TransRed,
         TransBlue,
+        Teleporter,     // v1.8: linked team teleporters
+        HomeRed,        // v1.8: team home bases
+        HomeBlue,
         MAXIMUM
     }
 
@@ -45,6 +48,7 @@ namespace Infiniminer
         DeconstructionGun,
         ProspectingRadar,
         Detonator,
+        Drill,          // v1.8: digs rock
     }
 
     public enum PlayerTeam : byte
@@ -79,6 +83,7 @@ namespace Infiniminer
         RadarLow,
         RadarHigh,
         RadarSwitch,
+        Drill,
     }
 
     public enum InfiniminerMessage : byte
@@ -106,7 +111,14 @@ namespace Infiniminer
         PlaySound,              // byte sound, bool isPositional, ?Vector3 location
         TriggerConstructionGunAnimation,
         SetBeacon,              // vector3 position, string text ("" means remove), byte team
-        PlayerSetPosition,      // vector3 position, byte epoch: the server moves the player (respawn or correction)
+        PlayerSetPosition,      // vector3 position, byte epoch, byte reason (PositionReason): the server moves the player
+    }
+
+    public enum PositionReason : byte
+    {
+        Respawn,
+        Correction,
+        Teleport,
     }
 
     public class Beacon
@@ -118,7 +130,8 @@ namespace Infiniminer
     public static class GameConstants
     {
         // v1.6: new network transport (LiteNetLib). v1.7: server-authoritative movement and respawns.
-        public const string Version = "v1.7";
+        // v1.8: teleporters, drill, home bases.
+        public const string Version = "v1.8";
         public const string AppIdentifier = "InfiniminerPlus";
         public const int DefaultPort = 5565;
         public const int MapSize = 64;
@@ -165,6 +178,9 @@ namespace Infiniminer
                     return 50;
                 case BlockType.Explosive:
                     return 100;
+                case BlockType.Teleporter:
+                    return 200; // the price on the original teleporter icon
+
             }
 
             return 1000;
@@ -189,6 +205,7 @@ namespace Infiniminer
                 case BlockType.Ladder:
                 case BlockType.Shock:
                 case BlockType.Explosive:
+                case BlockType.Teleporter:
                     return true;
             }
             return false;

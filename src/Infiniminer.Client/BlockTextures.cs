@@ -49,6 +49,7 @@ namespace Infiniminer
         Road,
         BeaconRed,
         BeaconBlue,
+        HomeTop,
         TransRed,   // THESE MUST BE THE LAST TWO TEXTURES
         TransBlue,
         MAXIMUM
@@ -166,6 +167,26 @@ namespace Infiniminer
 
                 case BlockType.Explosive:
                     return BlockTexture.Explosive;
+
+                case BlockType.Teleporter:
+                    switch (faceDir)
+                    {
+                        case BlockFaceDirection.YIncreasing:
+                            return BlockTexture.TeleTop;
+                        case BlockFaceDirection.YDecreasing:
+                            return BlockTexture.TeleBottom;
+                        case BlockFaceDirection.XDecreasing:
+                        case BlockFaceDirection.XIncreasing:
+                            return BlockTexture.TeleSideA;
+                        default:
+                            return BlockTexture.TeleSideB;
+                    }
+
+                case BlockType.HomeRed:
+                case BlockType.HomeBlue:
+                    if (faceDir == BlockFaceDirection.YIncreasing || faceDir == BlockFaceDirection.YDecreasing)
+                        return BlockTexture.HomeTop;
+                    return blockType == BlockType.HomeRed ? BlockTexture.HomeRed : BlockTexture.HomeBlue;
             }
 
             return BlockTexture.None;

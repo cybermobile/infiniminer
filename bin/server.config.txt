@@ -23,3 +23,10 @@ orefactor = 10
 
 # If this flag is true, all blocks will be free and the game will be unwinnable.
 sandbox = false
+
+# If this flag is true, each team gets a home base (a crater with a metal floor) in opposite corners
+# of the map, and players spawn there.
+homebases = false
+
+# If this flag is true, shock blocks kill anyone who touches them, not just anyone hitting their underside.
+shocktouch = false

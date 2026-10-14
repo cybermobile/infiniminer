@@ -14,7 +14,7 @@ namespace Infiniminer.States
         SpriteFontBase uiFont;
         string[] currentHint;
 
-        static string[] HINTS = new string[18]
+        static string[] HINTS = new string[]
         {
             "Engineers can build bank blocks near ore veins for\nMiners to quickly fill the team's supplies.",
             "Sappers can use TNT to excavate around gold and\ndiamonds, as it does not destroy them.",
@@ -33,7 +33,9 @@ namespace Infiniminer.States
             "Press Q to quickly signal your teammates.",
             "All constructions require metal ore.\nDig for some or take it from your team's banks.",
             "Don't have a scroll wheel?\nPress R to cycle through block types for the construction gun.",
-            "You can set your name and adjust your screen resolution\nby editing the client configuration file.",
+            "You can set your name, screen resolution and controls\nin the OPTIONS menu.",
+            "Engineers can build teleporters. Stepping on one takes\nyou to the next teleporter your team built.",
+            "Miners carry a drill that can bore through rock.",
         };
 
         public override void OnEnter(string oldState)
