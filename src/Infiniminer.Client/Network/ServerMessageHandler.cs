@@ -268,6 +268,8 @@ namespace Infiniminer
                     {
                         int secondsLeft = msgBuffer.GetInt();
                         _P.winningCash = msgBuffer.GetUInt();
+                        // (Servers from before sandbox building don't send it.)
+                        _P.player.SetSandbox(!msgBuffer.EndOfData && msgBuffer.GetBool());
                         _P.overtime = secondsLeft == 0;
                         _P.matchEndTime = secondsLeft < 0 ? double.NaN : gameTime.TotalGameTime.TotalSeconds + secondsLeft;
                     }

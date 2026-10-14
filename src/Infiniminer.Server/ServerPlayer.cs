@@ -42,12 +42,12 @@ namespace Infiniminer
         public bool IsAdmin = false;
         public readonly RateLimiter LoginLimiter = new RateLimiter(3, 1 / 20f);   // three tries, then one every 20 s
 
-        public void SetClass(PlayerClass playerClass)
+        public void SetClass(PlayerClass playerClass, bool sandbox = false)
         {
             Class = playerClass;
             HasClass = true;
             ToolLimiters = new Dictionary<PlayerTools, RateLimiter>();
-            foreach (PlayerTools tool in GameRules.GetTools(playerClass))
+            foreach (PlayerTools tool in GameRules.GetTools(playerClass, sandbox))
             {
                 // Allow a small burst (packets can arrive bunched up) but not a faster sustained rate.
                 float cooldown = Math.Max(0.01f, GameRules.GetToolCooldown(tool, playerClass));

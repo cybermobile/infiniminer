@@ -85,6 +85,9 @@ namespace Infiniminer
         {
             this.config = config;
             this.dataDirectory = dataDirectory;
+            // Starting on a saved map: the world is the map's size.
+            if (config.MapFile != "" && WorldSave.Peek(MapPath(config.MapFile)) is WorldState map)
+                config.MapSize = map.MapSize;
             MAPSIZE = config.MapSize;
             movementValidator = new MovementValidator((x, y, z) => blockList[x, y, z], MAPSIZE);
         }
@@ -92,6 +95,11 @@ namespace Infiniminer
         public int Port
         {
             get { return netServer.LocalPort; }
+        }
+
+        public int MapSize
+        {
+            get { return MAPSIZE; }
         }
 
         public int PlayerCount
@@ -221,6 +229,78 @@ namespace Infiniminer
         }
 
         // Map files are plain names in the server's folder, so commands can't touch other files.
+        public const string MapsFolder = "maps";
+        public const string MapExtension = ".map";
+
+        // The saved maps in a data folder, by name, with their sizes.
+        public static List<(string name, int size)> ListMaps(string dataDirectory)
+        {
+            List<(string, int)> maps = new List<(string, int)>();
+            string folder = Path.Combine(dataDirectory, MapsFolder);
+            if (!Directory.Exists(folder))
+                return maps;
+            foreach (string file in Directory.GetFiles(folder, "*" + MapExtension).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+                if (WorldSave.Peek(file) is WorldState map)
+                    maps.Add((Path.GetFileNameWithoutExtension(file), map.MapSize));
+            return maps;
+        }
+
+        // A map's file: a name means maps/<name>.map in the data folder; a full path is used as it is.
+        public string MapPath(string map)
+        {
+            if (Path.IsPathRooted(map))
+                return map;
+            return Path.Combine(dataDirectory, MapsFolder, Path.HasExtension(map) ? map : map + MapExtension);
+        }
+
+        // Saves the world as a map (its blocks and who built them; no score), to start games on later.
+        public bool SaveMap(string name)
+        {
+            try
+            {
+                string path = MapPath(name);
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                WorldState world = CaptureWorld();
+                world.CashRed = world.CashBlue = world.OreRed = world.OreBlue = 0;
+                world.SecondsLeft = -1;
+                world.Overtime = false;
+                WorldSave.Save(path, world);
+                ConsoleWrite("MAP SAVED: " + path);
+                SendServerMessage("SERVER: THE MAP HAS BEEN SAVED AS " + name.ToUpperInvariant());
+                return true;
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                ConsoleWrite("ERROR: could not save the map: " + e.Message);
+                return false;
+            }
+        }
+
+        // Loads a saved map of this server's size. Returns false (leaving the world as it was) if it can't.
+        public bool LoadMap(string name)
+        {
+            string path = MapPath(name);
+            try
+            {
+                WorldState map = WorldSave.Load(path);
+                if (map.MapSize != MAPSIZE)
+                {
+                    ConsoleWrite("ERROR: the map is " + map.MapSize + "x" + map.MapSize + "; this server's world is " + MAPSIZE + "x" + MAPSIZE);
+                    return false;
+                }
+                blockList = map.Blocks;
+                blockCreatorTeam = map.Builders;
+            }
+            catch (Exception e) when (e is IOException || e is InvalidDataException || e is UnauthorizedAccessException)
+            {
+                ConsoleWrite("ERROR: could not load the map " + path + ": " + e.Message);
+                return false;
+            }
+            RebuildBlockTracking();
+            ConsoleWrite("LOADED MAP " + path);
+            return true;
+        }
+
         static bool IsSafeFileName(string filename)
         {
             return filename != "" && Path.GetFileName(filename) == filename && !filename.StartsWith('.')
@@ -316,7 +396,9 @@ namespace Infiniminer
                         ConsoleWrite(" bots [count]");
                         ConsoleWrite(" botskill <easy|normal|hard>");
                         ConsoleWrite(" tp <player name> <x> <y> <z>");
-                        ConsoleWrite(" save <mapfile>");
+                        ConsoleWrite(" savemap <name>     (maps/<name>.map, to start games on with map = <name>)");
+                        ConsoleWrite(" loadmap <name>");
+                        ConsoleWrite(" save <mapfile>     (the original text format)");
                         ConsoleWrite(" load <mapfile>");
                         ConsoleWrite(" restart");
                         ConsoleWrite(" quit");
@@ -458,6 +540,27 @@ namespace Infiniminer
                             SaveLevel(args[1]);
                         else
                             ConsoleWrite("ERROR: give a plain file name, e.g. save mymap.lvl");
+                    }
+                    break;
+
+                case "savemap":
+                    {
+                        if (args.Length >= 2 && IsSafeFileName(args[1]))
+                            SaveMap(args[1]);
+                        else
+                            ConsoleWrite("ERROR: give a plain name, e.g. savemap castle");
+                    }
+                    break;
+
+                case "loadmap":
+                    {
+                        if (args.Length >= 2 && IsSafeFileName(args[1]))
+                        {
+                            if (LoadMap(args[1]))
+                                ResendWorld();
+                        }
+                        else
+                            ConsoleWrite("ERROR: give a plain name, e.g. loadmap castle");
                     }
                     break;
 
@@ -901,8 +1004,9 @@ namespace Infiniminer
             // With "persist", carry on with the saved world if there is one (of this size).
             bool continued = config.Persist && ContinueSavedWorld();
 
-            // Create our block world, translating the coordinates out of the cave generator (where Z points down)
-            if (!continued)
+            // Otherwise start on the chosen map, or create our block world, translating the coordinates out of the
+            // cave generator (where Z points down).
+            if (!continued && !(config.MapFile != "" && LoadMap(config.MapFile)))
                 GenerateWorld();
 
             // Initialize the server.
@@ -1269,7 +1373,7 @@ namespace Infiniminer
                                 UsePickaxe(player, playerPosition, playerHeading, true);
                                 break;
                             case PlayerTools.ConstructionGun:
-                                if (Array.IndexOf(GameRules.GetBlocks(player.Class, player.Team), blockType) < 0)
+                                if (Array.IndexOf(GameRules.GetBlocks(player.Class, player.Team, config.SandboxMode), blockType) < 0)
                                     TriggerConstructionGunAnimation(player, -0.2f);
                                 else
                                     UseConstructionGun(player, playerPosition, playerHeading, blockType);
@@ -1334,7 +1438,7 @@ namespace Infiniminer
 
                         if (float.IsFinite(heading.X) && float.IsFinite(heading.Y) && float.IsFinite(heading.Z))
                             player.Heading = heading;
-                        player.Tool = player.HasClass && Array.IndexOf(GameRules.GetTools(player.Class), tool) >= 0 ? tool : PlayerTools.Pickaxe;
+                        player.Tool = player.HasClass && Array.IndexOf(GameRules.GetTools(player.Class, config.SandboxMode), tool) >= 0 ? tool : PlayerTools.Pickaxe;
                         player.UsingTool = usingTool;
 
                         // Updates sent before the server last moved this player are stale; dead players don't move.
@@ -1490,7 +1594,7 @@ namespace Infiniminer
                 KillPlayer(player, "");
 
             ConsoleWrite("SELECT_CLASS: " + player.Handle + ", " + playerClass.ToString());
-            player.SetClass(playerClass);
+            player.SetClass(playerClass, config.SandboxMode);
             switch (playerClass)
             {
                 case PlayerClass.Engineer:
@@ -2020,11 +2124,12 @@ namespace Infiniminer
         // in an empty space nobody is standing in. Returns whether it was built.
         public bool PlaceBlock(ServerPlayer player, int x, int y, int z, BlockType blockType)
         {
-            if (!BlockInformation.IsBuildable(blockType) || !InBounds(x, y, z) || blockList[x, y, z] != BlockType.None)
+            bool editorBlock = config.SandboxMode && Array.IndexOf(GameRules.EditorBlocks, blockType) >= 0;
+            if (!(BlockInformation.IsBuildable(blockType) || editorBlock) || !InBounds(x, y, z) || blockList[x, y, z] != BlockType.None)
                 return false;
 
             uint blockCost = BlockInformation.GetCost(blockType);
-            if (config.SandboxMode && blockCost <= player.OreMax)
+            if (config.SandboxMode && (blockCost <= player.OreMax || editorBlock))
                 blockCost = 0;
             if (blockCost > player.Ore)
                 return false;
@@ -2057,12 +2162,15 @@ namespace Infiniminer
             int y = GameConstants.ToBlock(hitPoint.Y);
             int z = GameConstants.ToBlock(hitPoint.Z);
 
+            // In a sandbox (building a map) it takes away anything but the map's outer shell.
+            bool sandboxRemoval = config.SandboxMode && x > 0 && y > 0 && z > 0 && x < MAPSIZE - 1 && y < MAPSIZE - 1 && z < MAPSIZE - 1;
+
             // If this is another team's block, bail.
-            if (blockCreatorTeam[x, y, z] != player.Team)
+            if (blockCreatorTeam[x, y, z] != player.Team && !sandboxRemoval)
                 actionFailed = true;
 
             BlockType blockType = blockList[x, y, z];
-            if (!(blockType == BlockType.SolidBlue ||
+            if (!sandboxRemoval && !(blockType == BlockType.SolidBlue ||
                 blockType == BlockType.SolidRed ||
                 blockType == BlockType.BankBlue ||
                 blockType == BlockType.BankRed ||
@@ -2411,6 +2519,7 @@ namespace Infiniminer
             NetDataWriter msgBuffer = NetExtensions.CreateMessage(InfiniminerMessage.MatchInfo);
             msgBuffer.Put(SecondsLeft);
             msgBuffer.Put(WinningCash);
+            msgBuffer.Put(config.SandboxMode);      // (added later: older clients stop reading before it)
             if (player != null)
                 player.Peer.Send(msgBuffer, NetChannel.ReliableInOrder1);
             else

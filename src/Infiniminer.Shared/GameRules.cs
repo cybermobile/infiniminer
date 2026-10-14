@@ -18,6 +18,13 @@ namespace Infiniminer
         public const float LowerBodyOffset = -1.4f;
         public const float FootOffset = -1.5f;
 
+        // In a sandbox everyone also carries the deconstruction gun, to take away any block.
+        public static PlayerTools[] GetTools(PlayerClass playerClass, bool sandbox)
+        {
+            PlayerTools[] tools = GetTools(playerClass);
+            return sandbox && !tools.Contains(PlayerTools.DeconstructionGun) ? tools.Append(PlayerTools.DeconstructionGun).ToArray() : tools;
+        }
+
         public static PlayerTools[] GetTools(PlayerClass playerClass)
         {
             switch (playerClass)
@@ -32,6 +39,18 @@ namespace Infiniminer
                     return new[] { PlayerTools.Pickaxe, PlayerTools.ConstructionGun, PlayerTools.Detonator };
             }
             return new[] { PlayerTools.Pickaxe };
+        }
+
+        // Sandbox games are for building maps: everyone can also place the world's own blocks, for free.
+        public static readonly BlockType[] EditorBlocks =
+        {
+            BlockType.Dirt, BlockType.Rock, BlockType.Ore, BlockType.Gold, BlockType.Diamond, BlockType.Lava, BlockType.Metal
+        };
+
+        public static BlockType[] GetBlocks(PlayerClass playerClass, PlayerTeam team, bool sandbox)
+        {
+            BlockType[] blocks = GetBlocks(playerClass, team);
+            return sandbox ? blocks.Concat(EditorBlocks).ToArray() : blocks;
         }
 
         public static BlockType[] GetBlocks(PlayerClass playerClass, PlayerTeam team)

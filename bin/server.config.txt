@@ -19,6 +19,10 @@ winningcash = 10000
 # platform in the middle of the map (with ramps up to it) earns $25 a second for the team with more players on it.
 gamemode = cash
 
+# Start on a saved map (maps/<name>.map next to this file, made with SAVE MAP in a hosted sandbox game or the
+# "savemap <name>" console command) instead of a new world. The world is the map's size. Empty: a new world.
+map = 
+
 # This flag specifies whether or not generated levels will include lava.
 includelava = true
 

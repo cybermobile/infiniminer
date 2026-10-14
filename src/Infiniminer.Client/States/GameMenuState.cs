@@ -22,6 +22,25 @@ namespace Infiniminer.States
             get { return 44; }
         }
 
+        // SAVE MAP: typing the name.
+        bool namingMap;
+        string mapName = "";
+
+        protected override bool Busy
+        {
+            get { return namingMap; }
+        }
+
+        public override string TextInputPrompt
+        {
+            get { return namingMap ? "SAVE THE MAP AS: " + mapName + "_" : null; }
+        }
+
+        protected override string Hint
+        {
+            get { return namingMap ? "TYPE A NAME FOR THE MAP, THEN PRESS ENTER (ESCAPE CANCELS)" : base.Hint; }
+        }
+
         bool CanChangeClass
         {
             get { return !_P.player.Spectating && _P.player.Position.Y > _P.SurfaceHeight; }
@@ -56,6 +75,13 @@ namespace Infiniminer.States
                 },
                 new Row
                 {
+                    Label = "SAVE MAP",
+                    Value = () => namingMap ? mapName + "_" : Game.IsHosting ? "TO START GAMES ON" : "HOST ONLY",
+                    Enabled = () => Game.HostedServer != null,
+                    Activate = () => { namingMap = true; mapName = ""; _P.PlaySound(InfiniminerSound.ClickHigh); },
+                },
+                new Row
+                {
                     Label = "RESPAWN",
                     Value = () => "COMMITS PIXELCIDE",
                     Enabled = () => !_P.player.Dead,
@@ -68,6 +94,39 @@ namespace Infiniminer.States
                     Activate = () => { Game.LeaveServer(); Go(typeof(ServerBrowserState)); },
                 },
             };
+        }
+
+        public override void OnTextInput(char character)
+        {
+            if (namingMap && mapName.Length < 24 && (char.IsLetterOrDigit(character) || character == '-' || character == '_' || character == ' '))
+                mapName += char.ToLowerInvariant(character);
+        }
+
+        public override void OnKeyDown(Keys key)
+        {
+            if (!namingMap)
+            {
+                base.OnKeyDown(key);
+                return;
+            }
+            if (key == Keys.Back && mapName.Length > 0)
+                mapName = mapName.Substring(0, mapName.Length - 1);
+            else if (key == Keys.Escape)
+                namingMap = false;
+            else if (key == Keys.Enter)
+                SaveMap();
+        }
+
+        // Saves the hosted world as a map (on the server's thread); the server says in chat when it's done.
+        void SaveMap()
+        {
+            namingMap = false;
+            string name = mapName.Trim().Replace(' ', '-');
+            if (name == "" || Game.HostedServer == null)
+                return;
+            Game.HostedServer.Do(server => server.SaveMap(name));
+            _P.PlaySound(InfiniminerSound.ClickHigh);
+            Go(typeof(MainGameState));
         }
 
         void CopyInternetAddress()

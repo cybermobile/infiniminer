@@ -69,8 +69,8 @@ namespace Infiniminer
             HasClass = true;
             ToolSelected = 0;
             BlockSelected = 0;
-            Tools = GameRules.GetTools(playerClass);
-            Blocks = GameRules.GetBlocks(playerClass, Team);
+            Tools = GameRules.GetTools(playerClass, Sandbox);
+            Blocks = GameRules.GetBlocks(playerClass, Team, Sandbox);
         }
 
         // Teams build in their own colours, so the blocks on offer change with the team.
@@ -78,8 +78,32 @@ namespace Infiniminer
         {
             Spectating = false;
             Team = team;
-            Blocks = GameRules.GetBlocks(Class, team);
+            Blocks = GameRules.GetBlocks(Class, team, Sandbox);
             BlockSelected = Math.Min(BlockSelected, Blocks.Length - 1);
+        }
+
+        // A sandbox server (for building maps): building is free, with the world's own blocks too, and everyone
+        // carries the deconstruction gun.
+        public bool Sandbox { get; private set; }
+
+        public void SetSandbox(bool sandbox)
+        {
+            if (sandbox == Sandbox)
+                return;
+            Sandbox = sandbox;
+            if (HasClass)
+            {
+                Tools = GameRules.GetTools(Class, sandbox);
+                ToolSelected = Math.Min(ToolSelected, Tools.Length - 1);
+            }
+            Blocks = GameRules.GetBlocks(Class, Team, sandbox);
+            BlockSelected = Math.Min(BlockSelected, Blocks.Length - 1);
+        }
+
+        // What building a block costs this player.
+        public uint BuildCost(BlockType blockType)
+        {
+            return Sandbox ? 0 : BlockInformation.GetCost(blockType);
         }
     }
 }

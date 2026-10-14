@@ -90,6 +90,14 @@ namespace Infiniminer
             blockIcons[BlockType.Road] = assets.Texture("icons/tex_icon_road");
             blockIcons[BlockType.Teleporter] = assets.Texture("icons/tex_icon_teleporter");
             blockIcons[BlockType.None] = assets.Texture("icons/tex_icon_deconstruction");
+            // Sandbox building: the world's own blocks, shown by their textures.
+            blockIcons[BlockType.Dirt] = assets.Texture("blocks/tex_block_dirt");
+            blockIcons[BlockType.Rock] = assets.Texture("blocks/tex_block_rock");
+            blockIcons[BlockType.Ore] = assets.Texture("blocks/tex_block_ore");
+            blockIcons[BlockType.Gold] = assets.Texture("blocks/tex_block_silver");
+            blockIcons[BlockType.Diamond] = assets.Texture("blocks/tex_block_diamond");
+            blockIcons[BlockType.Lava] = assets.Texture("blocks/tex_block_lava");
+            blockIcons[BlockType.Metal] = assets.Texture("blocks/tex_block_metal");
 
             // Load fonts.
             uiFont = assets.UiFont;
@@ -282,7 +290,7 @@ namespace Infiniminer
                         BlockType currentBlock = _P.player.SelectedBlock;
                         string equipment = currentTool.ToString();
                         if (currentTool == PlayerTools.ConstructionGun)
-                            equipment += " - " + currentBlock.ToString() + " (" + BlockInformation.GetCost(currentBlock) + ")";
+                            equipment += " - " + currentBlock.ToString() + (_P.player.Sandbox ? " (FREE)" : " (" + BlockInformation.GetCost(currentBlock) + ")");
                         RenderMessageCenter(spriteBatch, equipment, new Vector2(ScreenWidth / 2, ScreenHeight - 20), Color.White, Color.Black);
                     }
                     break;

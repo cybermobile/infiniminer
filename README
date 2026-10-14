@@ -26,6 +26,13 @@ their server list. With KEEP WORLD on, ending the game saves it, and HOST GAME o
 time (or start a NEW WORLD). Dedicated servers do the same with "persist = true". The in-game menu's END GAME stops it. A dedicated server is still the way to run a game
 that outlives your session.
 
+MAKING MAPS: host a game with SANDBOX on. In a sandbox, building is free, the construction gun also
+places the world's own blocks (dirt, rock, ore, gold, diamonds, lava and metal), and everyone carries the
+deconstruction gun, which takes away any block. When the map is ready, SAVE MAP in the in-game menu saves
+it (to maps/<name>.map in your settings folder); MAP in HOST GAME then starts games on it, at its size,
+in any mode. A dedicated server starts on one with "map = <name>" (its maps folder), and the console
+commands "savemap <name>" and "loadmap <name>" save and load them while it runs.
+
 To let friends on the internet join a game you host, set INTERNET PLAYERS to OPEN ROUTER (UPNP) in HOST
 GAME (or "upnp = true" for a dedicated server). The game asks your router to forward its port and tells
 you the address to give out (the in-game menu's INTERNET row copies it). If the router doesn't support it

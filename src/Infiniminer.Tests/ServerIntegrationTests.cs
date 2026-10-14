@@ -396,13 +396,12 @@ namespace Infiniminer.Tests
             Vector3 start = StandingOn(x, y, z);
             Teleport(bot, start);
 
-            // Miners don't carry the engineer's deconstruction gun: the dirt below survives.
-            UseTool(bot, start, -Vector3.UnitY, PlayerTools.DeconstructionGun);
-            // Miners can't build banks, only their own blocks.
+            // Miners can't build banks, only their own blocks (and, this server being a sandbox, the world's).
+            // (Which tools each class carries is checked in MapEditorTests: in a sandbox everyone has the
+            // deconstruction gun.)
             UseTool(bot, start, -Vector3.UnitY, PlayerTools.ConstructionGun, BlockType.BankRed);
             WaitFor(bot, () => bot.MessagesOfType(InfiniminerMessage.TriggerConstructionGunAnimation).Any(r => r.GetFloat() < 0), "failed build");
             Assert.False(HasBlockSet(bot, x, y + 1, z, BlockType.BankRed));
-            Assert.False(HasBlockSet(bot, x, y, z, BlockType.None));
         }
 
         [Fact]

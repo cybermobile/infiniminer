@@ -50,6 +50,9 @@ namespace Infiniminer.States
         public override void OnEnter(Type oldState)
         {
             base.OnEnter(oldState);
+            maps = InfiniminerServer.ListMaps(Game.DataDirectory);
+            if (ChosenMap == null)
+                Settings.HostMap = "";      // deleted since
             Rebuild();
             selected = rows.FindIndex(r => r.Activate == StartGame);  // START (or CONTINUE) GAME
         }
@@ -59,12 +62,26 @@ namespace Infiniminer.States
             get { return Path.Combine(Game.DataDirectory, InfiniminerServer.WorldFile); }
         }
 
-        // The world a previous hosted game left, if it will be continued (same size, keeping worlds).
+        // The saved maps (from SAVE MAP in a game, or the savemap console command).
+        List<(string name, int size)> maps = new List<(string, int)>();
+
+        (string name, int size)? ChosenMap
+        {
+            get
+            {
+                foreach (var map in maps)
+                    if (map.name == Settings.HostMap)
+                        return map;
+                return null;
+            }
+        }
+
+        // The world a previous hosted game left, if it will be continued (same size, keeping worlds, no map chosen).
         WorldState SavedWorld
         {
             get
             {
-                if (!Settings.HostKeepWorld)
+                if (!Settings.HostKeepWorld || Settings.HostMap != "")
                     return null;
                 WorldState saved = WorldSave.Peek(SavedWorldPath);
                 return saved != null && saved.MapSize == Settings.HostMapSize ? saved : null;
@@ -102,8 +119,23 @@ namespace Infiniminer.States
                 },
                 new Row
                 {
+                    Label = "MAP",
+                    Value = () => ChosenMap is (string name, int size) ? name.ToUpperInvariant() + " (" + size + " X " + size + ")" : "NEW WORLD",
+                    Enabled = () => maps.Count > 0,
+                    Change = direction =>
+                    {
+                        // NEW WORLD, then each saved map.
+                        int index = maps.FindIndex(m => m.name == Settings.HostMap) + 1;
+                        index = Cycle(index, direction, maps.Count + 1);
+                        Settings.HostMap = index == 0 ? "" : maps[index - 1].name;
+                        Changed();
+                    },
+                },
+                new Row
+                {
                     Label = "WORLD SIZE",
                     Value = () => Settings.HostMapSize + " X " + Settings.HostMapSize,
+                    Enabled = () => ChosenMap == null,
                     Change = direction =>
                     {
                         int index = Array.IndexOf(GameConstants.MapSizes, Settings.HostMapSize);

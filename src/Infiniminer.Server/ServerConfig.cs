@@ -25,6 +25,7 @@ namespace Infiniminer
         public bool Persist = false;        // keep the world (and the match standing) in world.sav between runs
         public bool ArchiveMatches = true;  // write each finished match's map to autosave_<time>.lvl
         public GameMode Mode = GameMode.Cash;
+        public string MapFile = "";         // start on this saved map (maps/<name>.map, or a full path) instead of a new world
 
         // The original public server list (apps.keithholman.net) no longer exists, so listing is opt-in
         // through this setting. The endpoint receives the same form POST the original server sent.
@@ -57,6 +58,7 @@ namespace Infiniminer
                 config.BotSkill = skill;
             if (Enum.TryParse(dataFile.GetString("gamemode", ""), true, out GameMode mode) && Enum.IsDefined(mode))
                 config.Mode = mode;
+            config.MapFile = dataFile.GetString("map", config.MapFile);
             int mapSize = dataFile.GetInt("mapsize", config.MapSize);
             config.MapSize = GameConstants.MapSizes.Contains(mapSize) ? mapSize : GameConstants.MapSize;
             config.ServerListUrl = dataFile.GetString("serverlist", config.ServerListUrl);

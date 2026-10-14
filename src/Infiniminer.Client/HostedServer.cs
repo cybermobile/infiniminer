@@ -12,6 +12,7 @@ namespace Infiniminer
         readonly string dataDirectory;
         readonly Thread thread;
         readonly ConcurrentQueue<string> log = new ConcurrentQueue<string>();
+        readonly ConcurrentQueue<Action<InfiniminerServer>> actions = new ConcurrentQueue<Action<InfiniminerServer>>();
         volatile bool stopRequested;
         volatile InfiniminerServer server;
 
@@ -92,7 +93,11 @@ namespace Infiniminer
                     Ready = true;
 
                     while (!stopRequested && instance.Tick())
+                    {
+                        while (actions.TryDequeue(out Action<InfiniminerServer> action))
+                            action(instance);
                         Thread.Sleep(1);
+                    }
                     instance.Shutdown("The host ended the game.");
                 }
             }
@@ -102,6 +107,12 @@ namespace Infiniminer
                 Console.Error.WriteLine(e);
                 server?.Shutdown("The server crashed.");
             }
+        }
+
+        // Runs something on the server's own thread, between ticks (the server isn't thread-safe).
+        public void Do(Action<InfiniminerServer> action)
+        {
+            actions.Enqueue(action);
         }
 
         // Ends the game for everyone and waits (briefly) for the server to close.

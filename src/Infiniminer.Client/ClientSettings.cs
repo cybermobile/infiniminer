@@ -61,6 +61,7 @@ namespace Infiniminer
         public int HostBots = 2;            // computer players
         public BotSkill HostBotSkill = BotSkill.Normal;
         public GameMode HostGameMode = GameMode.Cash;
+        public string HostMap = "";         // a saved map (maps/<name>.map) to start on; "" for a new world
         public bool HostInternet = false;   // forward the port on the router (UPnP)
         public bool HostKeepWorld = true;   // save the world when the game ends, to continue it next time
         public Dictionary<GameAction, Keys> KeyBindings = DefaultKeyBindings();
@@ -140,8 +141,9 @@ namespace Infiniminer
                 Bots = HostBots,
                 BotSkill = HostBotSkill,
                 Mode = HostGameMode,
+                MapFile = HostMap,
                 Upnp = HostInternet,
-                Persist = HostKeepWorld,
+                Persist = HostKeepWorld && HostMap == "",      // a game on a saved map starts from the map every time
                 ArchiveMatches = false,     // no pile of old maps in the player's settings folder
                 // Open to the internet, the game is also announced on the public server list, if one is set.
                 PublicServer = HostInternet && ServerListUrl != "",
@@ -214,6 +216,7 @@ namespace Infiniminer
                 settings.HostBotSkill = skill;
             if (Enum.TryParse(dataFile.GetString("host_gamemode", ""), true, out GameMode mode) && Enum.IsDefined(mode))
                 settings.HostGameMode = mode;
+            settings.HostMap = dataFile.GetString("host_map", settings.HostMap);
             settings.HostInternet = dataFile.GetBool("host_internet", settings.HostInternet);
             settings.HostKeepWorld = dataFile.GetBool("host_keepworld", settings.HostKeepWorld);
             foreach (GameAction action in Enum.GetValues<GameAction>())
@@ -281,6 +284,7 @@ namespace Infiniminer
             Line("host_bots = " + HostBots.ToString(CultureInfo.InvariantCulture));
             Line("host_botskill = " + HostBotSkill.ToString().ToLowerInvariant());
             Line("host_gamemode = " + HostGameMode.ToString().ToLowerInvariant());
+            Line("host_map = " + HostMap);
             Line("host_internet = " + Bool(HostInternet));
             Line("host_keepworld = " + Bool(HostKeepWorld));
             Line();

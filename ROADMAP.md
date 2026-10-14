@@ -111,3 +111,5 @@ The original server trusted almost everything the client said.
       bank and blast through its fence
 - [x] King of the hill (`gamemode = hill`, GAME MODE in HOST GAME): a platform in the middle of the map earns
       the team holding it $25 a second; bots go and hold it, and find their way round if they get stuck
+- [x] Map editor: sandbox games build with the world's own blocks and take away anything; SAVE MAP in the menu,
+      MAP in HOST GAME, `map =` / `savemap` / `loadmap` for dedicated servers

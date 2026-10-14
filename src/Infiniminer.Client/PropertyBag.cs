@@ -352,7 +352,7 @@ namespace Infiniminer
             Vector3 hitPoint = Vector3.Zero, buildPoint = Vector3.Zero;
             if (!blockEngine.RayCollision(player.Position, playerCamera.GetLookVector(), 6, 25, ref hitPoint, ref buildPoint))
                 return;
-            if (player.Ore < BlockInformation.GetCost(blockType) || blockEngine.BlockAtPoint(hitPoint) == BlockType.Lava)
+            if (player.Ore < player.BuildCost(blockType) || blockEngine.BlockAtPoint(hitPoint) == BlockType.Lava)
                 return;
             var block = BlockOf(buildPoint);
             if (!InsideMap(block))
