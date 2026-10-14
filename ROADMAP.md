@@ -107,4 +107,5 @@ The original server trusted almost everything the client said.
 - [x] Spectator mode: SPECTATE on the team screen, free flight, "WATCHING" on the scoreboard; the server
       won't respawn or accept actions from players without a team and class
 - [x] Bots that defend and attack: engineers fence the bank in with force fields (two high, so it can't be
-      jumped), and sappers raid the enemy bank and blast through its fence
+      jumped) and then a rail of shock blocks above it (no room to climb over), and sappers raid the enemy
+      bank and blast through its fence

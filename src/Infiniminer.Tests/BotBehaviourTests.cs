@@ -203,7 +203,7 @@ namespace Infiniminer.Tests
         }
 
         [Fact]
-        public void EngineersFenceTheBankInWithForceFields()
+        public void EngineersFenceTheBankInWithForceFieldsAndShockBlocks()
         {
             FakeWorld world = new FakeWorld(32, BlockType.Dirt);
             world.Carve(2, 29, 25, 30, 2, 29);
@@ -211,7 +211,7 @@ namespace Infiniminer.Tests
             var ring = ServerBot.DefenceRing((15, 25, 15)).ToHashSet();
             Assert.Equal(32, ring.Count);
 
-            // Each trip home spends half its ore on the fence until it is finished; then it all goes in the bank.
+            // Each trip home spends half its ore on defences until they are finished; then it all goes in the bank.
             ServerBot engineer = MakeBot(world, PlayerClass.Engineer, 14, 25, 15, ore: 300);
             void Trip(uint ore)
             {
@@ -230,6 +230,15 @@ namespace Infiniminer.Tests
             for (int trip = 0; trip < 6; trip++)
                 Trip(350);
             Assert.Equal(32, ring.Count(c => world.Blocks[c.x, c.y, c.z] == BlockType.TransRed));
+
+            // Then a rail of shock blocks a block above the top of the fence.
+            var rail = ServerBot.ShockRail((15, 25, 15)).ToList();
+            Assert.Equal(16, rail.Count);
+            Assert.All(rail, c => Assert.Equal(28, c.y));
+            for (int trip = 0; trip < 6; trip++)
+                Trip(350);
+            Assert.Equal(16, rail.Count(c => world.Blocks[c.x, c.y, c.z] == BlockType.Shock));
+            Assert.Equal(48, engineer.DefencesBuilt);
             uint before = world.OreDeposited;
             Trip(200);
             Assert.Equal(before + 200, world.OreDeposited);
@@ -277,7 +286,9 @@ namespace Infiniminer.Tests
             ServerBot blue = MakeBot(fenced, PlayerClass.Engineer, 8, 25, 15, ore: 100, team: PlayerTeam.Blue);
             blue.HeadForBank();
             RunWhile(blue, () => blue.HeadingForBank, 30);
-            Assert.Equal(100u, blue.OreDeposited);
+            // Half its ore goes on a shock block above the (already finished) fence, the rest in the bank.
+            Assert.Equal(1, blue.DefencesBuilt);
+            Assert.Equal(50u, blue.OreDeposited);
         }
 
         [Fact]

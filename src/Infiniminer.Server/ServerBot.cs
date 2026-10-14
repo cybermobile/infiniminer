@@ -27,8 +27,8 @@ namespace Infiniminer
     //   Miner       gold and diamonds, close by
     //   Prospector  gold and diamonds, sensed from further away (the radar)
     //   Engineer    ore for the team: climbs out on ladders it builds, builds the team a bank if it has none,
-    //               fences it in with the team's force fields (which only the team can walk through) and deposits
-    //               the rest of its ore there
+    //               fences it in with the team's force fields (which only the team can walk through) topped
+    //               with a rail of shock blocks, and deposits the rest of its ore there
     //   Sapper      blasts through rock that a pickaxe can't dig, and raids the enemy bank to blow up its defences
     // It moves one block at a time, digging what is in the way, keeps away from lava (and flees lava that flows
     // towards it), and heads home early when carrying diamonds.
@@ -191,6 +191,13 @@ namespace Infiniminer
                     for (int dz = -2; dz <= 2; dz++)
                         if (Math.Abs(dx) == 2 || Math.Abs(dz) == 2)
                             yield return (bank.x + dx, bank.y + dy, bank.z + dz);
+        }
+
+        // Shock blocks a block above the top of the fence: there is no room to stand on the fence under them, so
+        // anyone climbing over hits their head on one and is electrocuted. (The team just walks through.)
+        internal static IEnumerable<(int x, int y, int z)> ShockRail((int x, int y, int z) bank)
+        {
+            return DefenceRing(bank).Where(c => c.y == bank.y + 1).Select(c => (c.x, c.y + 2, c.z));
         }
 
         // A team's walls and force fields: only explosives get through them.
@@ -741,7 +748,7 @@ namespace Infiniminer
                     defenceBudget = Skill == BotSkill.Easy ? 0 : (int)Player.Ore / 2;
                 // Building and depositing are progress, even standing still.
                 stuckTime = 0;
-                if (defenceBudget >= BlockInformation.GetCost(OwnForceField) && Fortify())
+                if (Fortify())
                 {
                     actionCooldown = GameRules.GetToolCooldown(PlayerTools.ConstructionGun, Class);
                     return;
@@ -805,22 +812,28 @@ namespace Infiniminer
             return false;
         }
 
-        // Engineers at the bank: puts one of the team's force fields in the next empty spot of the ring round it,
-        // within reach and not where it is standing. Returns false when there is nothing more to build here.
+        // Engineers at the bank: puts one of the team's force fields in the next empty spot of the fence round it,
+        // and once that is finished, a shock block in the rail above it; within reach and not where it is standing.
+        // Returns false when there is nothing more to build here (or no budget left for it).
         bool Fortify()
         {
             if (world.FindBank(Player.Team) is not (int, int, int) bank)
                 return false;
-            foreach (var (cx, cy, cz) in DefenceRing(bank))
+            List<(int x, int y, int z)> fence = DefenceRing(bank).ToList();
+            bool fenced = fence.All(c => world.BlockAt(c.x, c.y, c.z) != BlockType.None);
+            BlockType blockType = fenced ? BlockType.Shock : OwnForceField;
+            if (defenceBudget < BlockInformation.GetCost(blockType))
+                return false;
+            foreach (var (cx, cy, cz) in fenced ? ShockRail(bank) : fence)
             {
                 if (world.BlockAt(cx, cy, cz) != BlockType.None || (cx == x && cz == z && (cy == fy || cy == fy + 1)))
                     continue;
                 if (Vector3.Distance(Player.Position, new Vector3(cx + 0.5f, cy + 0.5f, cz + 0.5f)) > BuildReach)
                     continue;
-                if (TryBuild(cx, cy, cz, OwnForceField))
+                if (TryBuild(cx, cy, cz, blockType))
                 {
                     DefencesBuilt++;
-                    defenceBudget -= (int)BlockInformation.GetCost(OwnForceField);
+                    defenceBudget -= (int)BlockInformation.GetCost(blockType);
                     return true;
                 }
             }
