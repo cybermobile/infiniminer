@@ -162,7 +162,7 @@ Silkscreen font (SIL Open Font License). To use the originals, put 04B_08__.TTF 
 src/Infiniminer.Client/Fonts/ (or Content/fonts/ next to the built game).
 
 Computer players: "bots = <count>" in server.config.txt, the "bots <count>" console command, or COMPUTER
-PLAYERS in HOST GAME. Bots dig down, tunnel and climb back to the surface to bank what they find, under
+PLAYERS in HOST GAME (5 by default, so three a side with you; it shows the teams each number makes). Bots dig down, tunnel and climb back to the surface to bank what they find, under
 the same rules as everyone else, and come in every class: miners dig for gold and diamonds, prospectors
 sense them from further away, engineers gather ore, climb out on ladders they build (which anyone can
 use), build the team a bank if it has none, fence it in with the team's force fields (which only the

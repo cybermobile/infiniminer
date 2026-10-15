@@ -158,8 +158,10 @@ namespace Infiniminer.States
                 new Row
                 {
                     Label = "COMPUTER PLAYERS",
-                    Value = () => Settings.HostBots == 0 ? "NONE" : Settings.HostBots.ToString(),
-                    Change = direction => { Settings.HostBots = Math.Clamp(Settings.HostBots + direction, 0, 8); Changed(); },
+                    // Bots keep the teams even, so with you they make teams of these sizes.
+                    Value = () => Settings.HostBots == 0 ? "NONE"
+                        : Settings.HostBots + " (" + (Settings.HostBots + 2) / 2 + " V " + (Settings.HostBots + 1) / 2 + " WITH YOU)",
+                    Change = direction => { Settings.HostBots = Math.Clamp(Settings.HostBots + direction, 0, ClientSettings.MaxHostBots); Changed(); },
                 },
                 new Row
                 {

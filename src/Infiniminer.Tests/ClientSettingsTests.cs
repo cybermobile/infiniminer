@@ -66,6 +66,29 @@ namespace Infiniminer.Tests
         }
 
         [Fact]
+        public void HostedGamesHaveThreeASideByDefault()
+        {
+            string path = Path.GetTempFileName();
+            try
+            {
+                Assert.Equal(5, new ClientSettings().HostBots);
+
+                // Settings saved when the default was 2 (one bot a side) get the new default.
+                File.WriteAllLines(path, new[] { "handle = Host", "host_bots = 2" });
+                Assert.Equal(5, ClientSettings.Load(path).HostBots);
+
+                // A number chosen since then is kept.
+                ClientSettings settings = new ClientSettings { HostBots = 9 };
+                settings.Save(path);
+                Assert.Equal(9, ClientSettings.Load(path).HostBots);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
         public void BindingATakenKeySwapsTheBindings()
         {
             ClientSettings settings = new ClientSettings();

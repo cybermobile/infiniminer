@@ -60,7 +60,7 @@ namespace Infiniminer
         public bool HostLava = true;
         public bool HostHomeBases = true;
         public bool HostSandbox = false;
-        public int HostBots = 2;            // computer players
+        public int HostBots = 5;            // computer players: with the host, three a side
         public BotSkill HostBotSkill = BotSkill.Normal;
         public GameMode HostGameMode = GameMode.Cash;
         public string HostMap = "";         // a saved map (maps/<name>.map) to start on; "" for a new world
@@ -71,6 +71,7 @@ namespace Infiniminer
         public const int MinSensitivity = 1, MaxSensitivity = 20;
         public const int MinFieldOfView = 60, MaxFieldOfView = 110;
         public const int MaxUiScale = 3;
+        public const int MaxHostBots = 15;
 
         public static Dictionary<GameAction, Keys> DefaultKeyBindings()
         {
@@ -217,7 +218,9 @@ namespace Infiniminer
             settings.HostLava = dataFile.GetBool("host_lava", settings.HostLava);
             settings.HostHomeBases = dataFile.GetBool("host_homebases", settings.HostHomeBases);
             settings.HostSandbox = dataFile.GetBool("host_sandbox", settings.HostSandbox);
-            settings.HostBots = Math.Clamp(dataFile.GetInt("host_bots", settings.HostBots), 0, 16);
+            // (Saved as host_computers since games got more of them by default; the old host_bots, which was nearly always
+            // the old default of 2, one a side, is left behind.)
+            settings.HostBots = Math.Clamp(dataFile.GetInt("host_computers", settings.HostBots), 0, MaxHostBots);
             if (Enum.TryParse(dataFile.GetString("host_botskill", ""), true, out BotSkill skill) && Enum.IsDefined(skill))
                 settings.HostBotSkill = skill;
             if (Enum.TryParse(dataFile.GetString("host_gamemode", ""), true, out GameMode mode) && Enum.IsDefined(mode))
@@ -291,7 +294,7 @@ namespace Infiniminer
             Line("host_lava = " + Bool(HostLava));
             Line("host_homebases = " + Bool(HostHomeBases));
             Line("host_sandbox = " + Bool(HostSandbox));
-            Line("host_bots = " + HostBots.ToString(CultureInfo.InvariantCulture));
+            Line("host_computers = " + HostBots.ToString(CultureInfo.InvariantCulture));
             Line("host_botskill = " + HostBotSkill.ToString().ToLowerInvariant());
             Line("host_gamemode = " + HostGameMode.ToString().ToLowerInvariant());
             Line("host_map = " + HostMap);
