@@ -85,6 +85,7 @@ namespace Infiniminer
         {
             this.config = config;
             this.dataDirectory = dataDirectory;
+            randGen = config.Seed != 0 ? new Random(config.Seed) : new Random();
             // Starting on a saved map: the world is the map's size.
             if (config.MapFile != "" && WorldSave.Peek(MapPath(config.MapFile)) is WorldState map)
                 config.MapSize = map.MapSize;
@@ -698,7 +699,9 @@ namespace Infiniminer
 
         List<string> beaconIDList = new List<string>();
         Dictionary<Vector3, Beacon> beaconList = new Dictionary<Vector3, Beacon>();
-        Random randGen = new Random();
+        // Bots' choices, spawn points and beacon names: a seeded server plays the same way each time (with the same
+        // world, from the cave generator), which makes bot tests repeatable.
+        Random randGen;
         public string _GenerateBeaconID()
         {
             string id = "K";

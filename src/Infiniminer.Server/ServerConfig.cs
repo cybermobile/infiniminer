@@ -21,7 +21,7 @@ namespace Infiniminer
         public int Bots = 0;                // computer players (they make way for people when the server is full)
         public BotSkill BotSkill = BotSkill.Normal;
         public bool Upnp = false;           // ask the router to forward the port (UPnP), for players on the internet
-        public int Seed = 0;                // 0: a different world every time; otherwise the same world for the same seed
+        public int Seed = 0;                // 0: a different world every time; otherwise the same world (and bots) for the same seed
         public bool Persist = false;        // keep the world (and the match standing) in world.sav between runs
         public bool ArchiveMatches = true;  // write each finished match's map to autosave_<time>.lvl
         public GameMode Mode = GameMode.Cash;

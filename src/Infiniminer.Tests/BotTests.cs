@@ -17,7 +17,8 @@ namespace Infiniminer.Tests
         {
             dataDirectory = Path.Combine(Path.GetTempPath(), "infiniminer-bots-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(dataDirectory);
-            CaveGenerator.SetSeed(7);
+            // The same world, and the same bot choices and spawn points, every run: what bots do is then repeatable.
+            config.Seed = 7;
             config.Port = 0;
             InfiniminerServer server = new InfiniminerServer(config, dataDirectory);
             server.Log = _ => { };
@@ -52,7 +53,7 @@ namespace Infiniminer.Tests
                 Assert.All(server.Bots, b => Assert.True(b.DeepestY < surface - 4, b.Player.Handle + " stayed near the surface"));
                 Assert.True(server.Bots.Sum(b => b.TripsHome) >= 4, "bots should come back up to bank their loot");
                 Assert.True(server.Bots.Sum(b => (long)b.Player.Score) > 0, "some loot should have been banked");
-                // (What each class does is checked on small worlds in BotBehaviourTests; play here varies run to run.)
+                // (What each class does is checked on small worlds in BotBehaviourTests.)
             }
             finally
             {
