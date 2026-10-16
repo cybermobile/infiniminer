@@ -8,60 +8,97 @@ using StateMasher;
 
 namespace Infiniminer.States
 {
+    // The multiplayer screen: QUICK PLAY and HOST A GAME, then a table of the games found (on the LAN, on the public
+    // list, and recent servers joined by address) with their mode, world, players, bots and ping, and a line about the
+    // selected one. The list refreshes itself every few seconds.
     public class ServerBrowserState : State
     {
         Texture2D texMenu;
         Rectangle drawRect;
         Type nextState = null;
         List<ServerInformation> serverList = new List<ServerInformation>();
-        List<int> descWidths = new List<int>();
         SpriteFontBase uiFont;
         bool directConnectIPEnter = false;
-        int highlighted = -1;           // the keyboard/controller selection in the list (-1: none yet)
-        const int MaxRows = 24;
+        int highlighted = -1;           // the keyboard/controller/mouse selection (-1: none yet)
+        Point lastMouse;
 
-        // The list: a row to host a game (or end the one we host), the servers found, then recent servers
-        // that weren't found (joined by address).
+        const int ActionY = 78, HeaderY = 122, ListTop = 150, RowHeight = 24, ListBottom = 582, DetailY = 596;
+        const int MaxServerRows = (ListBottom - ListTop) / RowHeight;
+        const double AutoRefreshSeconds = 5, SearchSeconds = 1.5;
+
+        // Columns of the table (x on the 1024-wide menu canvas).
+        const int ColType = 34, ColName = 104, ColMode = 446, ColWorld = 612, ColPlayers = 702, ColBots = 800, ColPing = 880;
+
+        enum RowKind { QuickPlay, Host, Server, Recent }
+
         sealed class BrowserRow
         {
+            public RowKind Kind;
             public string Text;
-            public Color Color;
+            public ServerInformation Server;
+            public (string address, string name) Recent;
+            public Rectangle Bounds;
             public Action Choose;
         }
         List<BrowserRow> rows = new List<BrowserRow>();
+
+        bool IsOwn(ServerInformation server)
+        {
+            return Game.IsHosting && server.instanceId != null && server.instanceId == Game.HostedServer.InstanceId;
+        }
 
         void BuildRows()
         {
             rows = new List<BrowserRow>
             {
-                new BrowserRow
-                {
-                    Text = Game.IsHosting ? "[ END YOUR GAME ]" : "[ HOST A GAME ]",
-                    Color = InfiniminerGame.IM_BLUE,
-                    Choose = HostOrEnd,
-                },
+                new BrowserRow { Kind = RowKind.QuickPlay, Text = "[ QUICK PLAY ]", Choose = QuickPlay },
+                new BrowserRow { Kind = RowKind.Host, Text = Game.IsHosting ? "[ END YOUR GAME ]" : "[ HOST A GAME ]", Choose = HostOrEnd },
             };
-            foreach (ServerInformation server in serverList)
+            int quickWidth = (int)uiFont.MeasureString(rows[0].Text).X + 30, hostWidth = (int)uiFont.MeasureString(rows[1].Text).X + 30;
+            rows[0].Bounds = new Rectangle(InfiniminerGame.MenuWidth / 2 - 30 - quickWidth, ActionY - 5, quickWidth, 26);
+            rows[1].Bounds = new Rectangle(InfiniminerGame.MenuWidth / 2 + 30, ActionY - 5, hostWidth, 26);
+
+            int y = ListTop;
+            // Your own game first, then games with people in them, nearest first.
+            foreach (ServerInformation server in serverList.OrderByDescending(IsOwn).ThenByDescending(s => s.People > 0)
+                         .ThenBy(s => s.PingMs < 0 ? int.MaxValue : s.PingMs))
             {
-                if (rows.Count >= MaxRows)
+                if (rows.Count - 2 >= MaxServerRows)
                     break;
                 ServerInformation listed = server;
-                rows.Add(new BrowserRow { Text = server.GetServerDesc(), Color = Color.White, Choose = () => Join(listed) });
+                rows.Add(new BrowserRow
+                {
+                    Kind = RowKind.Server,
+                    Server = server,
+                    Bounds = new Rectangle(ColType - 10, y - 3, InfiniminerGame.MenuWidth - 2 * (ColType - 10), RowHeight),
+                    Choose = () => Join(listed),
+                });
+                y += RowHeight;
             }
             HashSet<string> found = new HashSet<string>(serverList.Select(server => server.ipEndPoint.ToString()));
-            foreach (var (address, name) in Game.Settings.RecentServers)
+            foreach (var recent in Game.Settings.RecentServers)
             {
-                if (rows.Count >= MaxRows || found.Contains(address))
+                if (rows.Count - 2 >= MaxServerRows || found.Contains(recent.Address))
                     continue;
-                string text = "RECENT: " + name.ToUpperInvariant() + (name != address ? " (" + address + ")" : "");
-                rows.Add(new BrowserRow { Text = text, Color = new Color(170, 170, 170), Choose = () => JoinAddress(address, name) });
+                var (address, name) = recent;
+                rows.Add(new BrowserRow
+                {
+                    Kind = RowKind.Recent,
+                    Recent = (address, name),
+                    Bounds = new Rectangle(ColType - 10, y - 3, InfiniminerGame.MenuWidth - 2 * (ColType - 10), RowHeight),
+                    Choose = () => JoinAddress(address, name),
+                });
+                y += RowHeight;
             }
+            if (highlighted >= rows.Count)
+                highlighted = rows.Count - 1;
         }
 
         void HostOrEnd()
         {
             _P.PlaySound(InfiniminerSound.ClickHigh);
             Game.Rejoin.Cancel();
+            quickPlay = QuickPlayStep.None;
             if (Game.IsHosting)
             {
                 Game.StopHostedServer();
@@ -71,8 +108,55 @@ namespace Infiniminer.States
                 nextState = typeof(HostGameState);
         }
 
+        // QUICK PLAY: join the best open game (people playing, then nearest), or start one with computer players (the
+        // HOST GAME settings) if there isn't one. It waits a moment for LAN servers to answer first.
+        enum QuickPlayStep { None, Searching, Starting }
+        QuickPlayStep quickPlay = QuickPlayStep.None;
+
+        void QuickPlay()
+        {
+            _P.PlaySound(InfiniminerSound.ClickHigh);
+            Game.Rejoin.Cancel();
+            Game.StatusMessage = "";
+            quickPlay = QuickPlayStep.Searching;
+        }
+
+        void UpdateQuickPlay()
+        {
+            if (quickPlay == QuickPlayStep.Searching && Game.SecondsSinceDiscovery >= SearchSeconds && !Game.FetchingPublicList)
+            {
+                ServerInformation best = ServerInformation.PickForQuickPlay(serverList, IsOwn);
+                if (best != null)
+                {
+                    quickPlay = QuickPlayStep.None;
+                    Join(best);
+                    return;
+                }
+                quickPlay = QuickPlayStep.Starting;
+                Game.StopHostedServer();
+                Game.HostedServer = HostedServer.Start(Game.Settings.HostConfig(), Game.DataDirectory);
+            }
+            if (quickPlay == QuickPlayStep.Starting && Game.HostedServer != null)
+            {
+                if (Game.HostedServer.Error != null)
+                {
+                    Game.StatusMessage = "ERROR: " + Game.HostedServer.Error;
+                    Game.HostedServer = null;
+                    quickPlay = QuickPlayStep.None;
+                }
+                else if (Game.HostedServer.Ready && nextState == null)
+                {
+                    quickPlay = QuickPlayStep.None;
+                    Game.JoinGame(Game.HostedServer.EndPoint);
+                    nextState = typeof(LoadingState);
+                }
+            }
+        }
+
         void ChooseRow(int row)
         {
+            if (quickPlay != QuickPlayStep.None)
+                return;
             if (row >= 0 && row < rows.Count)
                 rows[row].Choose();
         }
@@ -88,6 +172,8 @@ namespace Infiniminer.States
         public override void OnEnter(Type oldState)
         {
             _SM.IsMouseVisible = true;
+            highlighted = -1;
+            quickPlay = QuickPlayStep.None;
             Game.ResetPropertyBag();
             _P = _SM.propertyBag;
 
@@ -111,15 +197,28 @@ namespace Infiniminer.States
 
         public override void OnLeave(Type newState)
         {
-
+            quickPlay = QuickPlayStep.None;
         }
 
         public override Type OnUpdate(GameTime gameTime, KeyboardState keyState, MouseState mouseState)
         {
-            // Pick up replies to our LAN discovery broadcast.
+            // Pick up replies to our discovery requests, and ask again every few seconds so the list stays current.
             Game.UpdateNetwork(gameTime);
+            if (Game.SecondsSinceDiscovery > AutoRefreshSeconds && !directConnectIPEnter)
+                Game.StartServerDiscovery(clear: false);
             serverList = Game.GetServerList();
             BuildRows();
+            UpdateQuickPlay();
+
+            // The mouse picks the row under it when it moves.
+            Point mouse = Game.ToMenu(mouseState.X, mouseState.Y);
+            if (mouse != lastMouse && _SM.WindowHasFocus())
+            {
+                lastMouse = mouse;
+                int under = rows.FindIndex(r => r.Bounds.Contains(mouse));
+                if (under >= 0)
+                    highlighted = under;
+            }
 
             // Rejoining a server that is restarting with a new map.
             if (Game.Rejoin.ShouldAttempt(gameTime.TotalGameTime.TotalSeconds) && nextState == null)
@@ -136,40 +235,153 @@ namespace Infiniminer.States
 
         }
 
+        static readonly Color Dim = new Color(110, 110, 110), Header = new Color(150, 150, 150), Highlight = new Color(60, 60, 60);
+
+        // Cuts text to fit a column.
+        string Fit(string text, int width)
+        {
+            if (uiFont.MeasureString(text).X <= width)
+                return text;
+            while (text.Length > 1 && uiFont.MeasureString(text + "...").X > width)
+                text = text.Substring(0, text.Length - 1);
+            return text + "...";
+        }
+
+        void DrawCentered(SpriteBatch spriteBatch, string text, int y, Color color)
+        {
+            Vector2 size = uiFont.MeasureString(text);
+            spriteBatch.DrawString(uiFont, text, new Vector2((int)(InfiniminerGame.MenuWidth / 2 - size.X / 2), y), color);
+        }
+
         public override void OnRenderAtUpdate(GraphicsDevice graphicsDevice, GameTime gameTime)
         {
-            descWidths = new List<int>();
             SpriteBatch spriteBatch = _SM.SpriteBatch;
+            Texture2D white = Game.Assets.WhitePixel;
             spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, Game.MenuSampler, null, null, null, Game.MenuTransform);
             spriteBatch.Draw(texMenu, drawRect, Color.White);
 
-            int drawY = 80;
-            for (int i = 0; i < rows.Count; i++, drawY += 25)
+            // QUICK PLAY and HOST A GAME.
+            for (int i = 0; i < 2 && i < rows.Count; i++)
             {
-                string description = rows[i].Text;
-                int textWidth = (int)(uiFont.MeasureString(description).X);
-                descWidths.Add(textWidth + 30);
+                BrowserRow row = rows[i];
+                spriteBatch.Draw(white, row.Bounds, i == highlighted ? new Color(70, 70, 70) : new Color(30, 30, 30));
+                Vector2 size = uiFont.MeasureString(row.Text);
+                Color color = i == 0 ? new Color(255, 200, 40) : InfiniminerGame.IM_BLUE;
+                spriteBatch.DrawString(uiFont, row.Text, new Vector2((int)(row.Bounds.Center.X - size.X / 2), ActionY), color);
+            }
+
+            // The table.
+            spriteBatch.DrawString(uiFont, "WHERE", new Vector2(ColType, HeaderY), Header);
+            spriteBatch.DrawString(uiFont, "SERVER", new Vector2(ColName, HeaderY), Header);
+            spriteBatch.DrawString(uiFont, "MODE", new Vector2(ColMode, HeaderY), Header);
+            spriteBatch.DrawString(uiFont, "WORLD", new Vector2(ColWorld, HeaderY), Header);
+            spriteBatch.DrawString(uiFont, "PLAYERS", new Vector2(ColPlayers, HeaderY), Header);
+            spriteBatch.DrawString(uiFont, "BOTS", new Vector2(ColBots, HeaderY), Header);
+            spriteBatch.DrawString(uiFont, "PING", new Vector2(ColPing, HeaderY), Header);
+            spriteBatch.Draw(white, new Rectangle(ColType - 10, HeaderY + 20, InfiniminerGame.MenuWidth - 2 * (ColType - 10), 1), Dim);
+
+            for (int i = 2; i < rows.Count; i++)
+            {
+                BrowserRow row = rows[i];
+                int y = row.Bounds.Y + 3;
                 if (i == highlighted)
-                    spriteBatch.Draw(Game.Assets.WhitePixel, new Rectangle(InfiniminerGame.MenuWidth / 2 - textWidth / 2 - 15, drawRect.Y + drawY - 4, textWidth + 30, 24), new Color(60, 60, 60));
-                spriteBatch.DrawString(uiFont, description, new Vector2(InfiniminerGame.MenuWidth / 2 - textWidth / 2, drawRect.Y + drawY), rows[i].Color);
+                    spriteBatch.Draw(white, row.Bounds, Highlight);
+                if (row.Kind == RowKind.Recent)
+                {
+                    spriteBatch.DrawString(uiFont, "RECENT", new Vector2(ColType, y), Dim);
+                    string name = row.Recent.name.ToUpperInvariant() + (row.Recent.name != row.Recent.address ? " (" + row.Recent.address + ")" : "");
+                    spriteBatch.DrawString(uiFont, Fit(name, ColMode - ColName - 12), new Vector2(ColName, y), new Color(170, 170, 170));
+                    spriteBatch.DrawString(uiFont, "NOT FOUND RIGHT NOW: CHOOSE IT TO TRY", new Vector2(ColMode, y), Dim);
+                    continue;
+                }
+                ServerInformation server = row.Server;
+                bool joinable = !server.Full && !server.WrongVersion;
+                Color text = joinable ? Color.White : Dim;
+                string where = IsOwn(server) ? "YOURS" : server.WrongVersion ? server.Version.ToUpperInvariant() : server.lanServer ? "LAN" : "NET";
+                Color whereColor = IsOwn(server) ? InfiniminerGame.IM_BLUE : server.WrongVersion ? InfiniminerGame.IM_RED : Header;
+                spriteBatch.DrawString(uiFont, where, new Vector2(ColType, y), whereColor);
+                spriteBatch.DrawString(uiFont, Fit(server.Name, ColMode - ColName - 12), new Vector2(ColName, y), text);
+                spriteBatch.DrawString(uiFont, Fit(server.ModeLabel, ColWorld - ColMode - 10), new Vector2(ColMode, y), text);
+                spriteBatch.DrawString(uiFont, server.WorldLabel, new Vector2(ColWorld, y), text);
+                spriteBatch.DrawString(uiFont, server.Full ? "FULL" : server.PlayersLabel, new Vector2(ColPlayers, y), server.Full ? InfiniminerGame.IM_RED : text);
+                spriteBatch.DrawString(uiFont, server.BotsLabel, new Vector2(ColBots, y), text);
+                Color pingColor = server.PingMs < 0 ? Dim : server.PingMs < 80 ? new Color(120, 220, 120) : server.PingMs < 180 ? new Color(255, 200, 40) : InfiniminerGame.IM_RED;
+                spriteBatch.DrawString(uiFont, server.PingLabel, new Vector2(ColPing, y), pingColor);
+            }
+
+            // Nothing to list yet.
+            if (rows.Count == 2)
+            {
+                if (Game.SecondsSinceDiscovery < SearchSeconds || Game.FetchingPublicList)
+                    DrawCentered(spriteBatch, "LOOKING FOR GAMES...", ListTop + 60, Header);
+                else
+                {
+                    DrawCentered(spriteBatch, "NO GAMES FOUND ON YOUR NETWORK.", ListTop + 60, Color.White);
+                    DrawCentered(spriteBatch, "QUICK PLAY STARTS ONE WITH COMPUTER PLAYERS; HOST A GAME TO CHOOSE THE SETTINGS.", ListTop + 90, Header);
+                    DrawCentered(spriteBatch, "FRIENDS ON YOUR NETWORK WILL SEE YOUR GAME HERE.", ListTop + 114, Header);
+                    if (Game.Settings.ServerListUrl == "")
+                        DrawCentered(spriteBatch, "TO JOIN A GAME ON THE INTERNET, USE DIRECT CONNECT WITH THE HOST'S ADDRESS.", ListTop + 150, Dim);
+                }
+            }
+
+            // About the selected row.
+            spriteBatch.Draw(white, new Rectangle(ColType - 10, DetailY - 8, InfiniminerGame.MenuWidth - 2 * (ColType - 10), 1), Dim);
+            if (highlighted >= 0 && highlighted < rows.Count)
+            {
+                BrowserRow row = rows[highlighted];
+                string first = "", second = "";
+                Color secondColor = Header;
+                switch (row.Kind)
+                {
+                    case RowKind.QuickPlay:
+                        first = "QUICK PLAY";
+                        second = "JOINS THE BEST OPEN GAME, OR STARTS ONE WITH " + Game.Settings.HostBots + " COMPUTER PLAYERS IF THERE ISN'T ONE";
+                        break;
+                    case RowKind.Host:
+                        first = Game.IsHosting ? "END YOUR GAME" : "HOST A GAME";
+                        second = Game.IsHosting ? "STOPS THE GAME YOU ARE HOSTING, FOR EVERYONE IN IT"
+                            : "CHOOSE THE WORLD, MODE, COMPUTER PLAYERS AND MORE; PLAYERS ON YOUR NETWORK CAN JOIN";
+                        break;
+                    case RowKind.Recent:
+                        first = row.Recent.name.ToUpperInvariant() + "   " + row.Recent.address;
+                        second = "A SERVER YOU JOINED BEFORE; IT ISN'T ANSWERING RIGHT NOW";
+                        break;
+                    default:
+                        ServerInformation server = row.Server;
+                        first = server.Name + "   " + server.ipEndPoint;
+                        second = server.DetailLine;
+                        if (server.WrongVersion)
+                        {
+                            second = "THIS SERVER RUNS INFINIMINER " + server.Version.ToUpperInvariant() + "; YOU HAVE " + GameConstants.Version.ToUpperInvariant();
+                            secondColor = InfiniminerGame.IM_RED;
+                        }
+                        else if (server.Full)
+                        {
+                            second = "FULL: " + second;
+                            secondColor = InfiniminerGame.IM_RED;
+                        }
+                        break;
+                }
+                int width = InfiniminerGame.MenuWidth - 2 * ColType;
+                DrawCentered(spriteBatch, Fit(first, width), DetailY, Color.White);
+                DrawCentered(spriteBatch, Fit(second, width), DetailY + 24, secondColor);
             }
 
             spriteBatch.DrawString(uiFont, InfiniminerGame.INFINIMINER_VERSION, new Vector2(10, InfiniminerGame.MenuHeight - 20), Color.White);
 
-            if (Game.StatusMessage != "")
-            {
-                int textWidth = (int)uiFont.MeasureString(Game.StatusMessage).X;
-                spriteBatch.DrawString(uiFont, Game.StatusMessage, new Vector2(InfiniminerGame.MenuWidth / 2 - textWidth / 2, drawRect.Y + 665), InfiniminerGame.IM_RED);
-            }
+            string status = quickPlay == QuickPlayStep.Searching ? "QUICK PLAY: LOOKING FOR AN OPEN GAME..."
+                : quickPlay == QuickPlayStep.Starting ? "QUICK PLAY: NO OPEN GAMES, SO STARTING ONE WITH " + Game.Settings.HostBots + " COMPUTER PLAYERS..."
+                : Game.StatusMessage;
+            if (status != "")
+                DrawCentered(spriteBatch, status, drawRect.Y + 665, quickPlay != QuickPlayStep.None ? new Color(255, 200, 40) : InfiniminerGame.IM_RED);
 
             if (directConnectIPEnter)
                 spriteBatch.DrawString(uiFont, "ENTER IP: " + directConnectIP, new Vector2(drawRect.X + 30, drawRect.Y + 690), Color.White);
             else
             {
                 string hint = Game.Rejoin.Active ? (_SM.UsingGamePad ? "B: STOP REJOINING" : "ESC: STOP REJOINING")
-                    : _SM.UsingGamePad ? "A: JOIN   X: REFRESH   Y: OPTIONS   BACK: ADDRESS   B: BACK" : "UP/DOWN AND ENTER: JOIN   F5: REFRESH";
-                Vector2 hintSize = uiFont.MeasureString(hint);
-                spriteBatch.DrawString(uiFont, hint, new Vector2((int)(InfiniminerGame.MenuWidth / 2 - hintSize.X / 2), drawRect.Y + 690), new Color(150, 150, 150));
+                    : _SM.UsingGamePad ? "A: JOIN   X: REFRESH   Y: OPTIONS   BACK: ADDRESS   B: BACK" : "CLICK OR ARROWS AND ENTER: JOIN   F5: REFRESH";
+                DrawCentered(spriteBatch, hint, drawRect.Y + 690, new Color(150, 150, 150));
             }
 
             // The options button sits between the two buttons painted into the menu image.
@@ -262,24 +474,30 @@ namespace Infiniminer.States
             {
                 if (key == Keys.Escape)
                 {
-                    // The first Escape only stops a rejoin in progress.
-                    if (Game.Rejoin.Active)
+                    // The first Escape only stops a rejoin, or a quick play, in progress.
+                    if (Game.Rejoin.Active || quickPlay == QuickPlayStep.Searching)
                     {
                         Game.Rejoin.Cancel();
+                        quickPlay = QuickPlayStep.None;
                         Game.StatusMessage = "";
                         return;
                     }
                     nextState = typeof(TitleState);
                 }
 
-                // Choosing without the mouse.
+                // Choosing without the mouse: up and down through everything, left and right between the two buttons.
                 int rowCount = rows.Count;
                 if (key == Keys.Up || key == Keys.Down)
                 {
                     if (highlighted < 0 || highlighted >= rowCount)
-                        highlighted = key == Keys.Up ? rowCount - 1 : Math.Min(1, rowCount - 1);
+                        highlighted = key == Keys.Up ? rowCount - 1 : 0;
                     else
                         highlighted = (highlighted + (key == Keys.Up ? -1 : 1) + rowCount) % rowCount;
+                    _P.PlaySound(InfiniminerSound.ClickLow);
+                }
+                if ((key == Keys.Left || key == Keys.Right) && highlighted <= 1)
+                {
+                    highlighted = highlighted == 0 && key == Keys.Right ? 1 : highlighted == 1 && key == Keys.Left ? 0 : Math.Max(0, highlighted);
                     _P.PlaySound(InfiniminerSound.ClickLow);
                 }
                 if (key == Keys.Enter)
@@ -291,6 +509,16 @@ namespace Infiniminer.States
 
         void Join(ServerInformation server)
         {
+            if (server.WrongVersion)
+            {
+                Game.StatusMessage = "THAT SERVER RUNS INFINIMINER " + server.Version.ToUpperInvariant() + " (YOU HAVE " + GameConstants.Version.ToUpperInvariant() + ")";
+                return;
+            }
+            if (server.Full)
+            {
+                Game.StatusMessage = "THAT SERVER IS FULL";
+                return;
+            }
             Game.Rejoin.Cancel();
             Game.JoinGame(server.ipEndPoint, server.ipEndPoint.ToString(), server.serverName);
             nextState = typeof(LoadingState);
@@ -354,37 +582,33 @@ namespace Infiniminer.States
         public override void OnMouseDown(MouseButton button, int x, int y)
         {
             Point menuPoint = Game.ToMenu(x, y);
-            x = menuPoint.X;
-            y = menuPoint.Y;
-            if (directConnectIPEnter == false)
+            if (directConnectIPEnter)
+                return;
+
+            int row = rows.FindIndex(r => r.Bounds.Contains(menuPoint));
+            if (row >= 0)
             {
-                int row = (y - drawRect.Y - 75) / 25;
-                if (y >= drawRect.Y + 75 && row < rows.Count && row < descWidths.Count)
-                {
-                    int distanceFromCenter = Math.Abs(InfiniminerGame.MenuWidth / 2 - x);
-                    if (distanceFromCenter < descWidths[row] / 2)
-                        ChooseRow(row);
-                }
+                highlighted = row;
+                ChooseRow(row);
+                return;
+            }
 
-                x -= drawRect.X;
-                y -= drawRect.Y;
-                switch (ClickRegion.HitTest(clkMenuServer, new Point(x, y)))
-                {
-                    case "refresh":
-                        Refresh();
-                        break;
+            switch (ClickRegion.HitTest(clkMenuServer, new Point(menuPoint.X - drawRect.X, menuPoint.Y - drawRect.Y)))
+            {
+                case "refresh":
+                    Refresh();
+                    break;
 
-                    case "options":
-                        _P.PlaySound(InfiniminerSound.ClickHigh);
-                        nextState = typeof(SettingsState);
-                        break;
+                case "options":
+                    _P.PlaySound(InfiniminerSound.ClickHigh);
+                    nextState = typeof(SettingsState);
+                    break;
 
-                    case "direct":
-                        directConnectIPEnter = true;
-                        Game.StatusMessage = "";
-                        _P.PlaySound(InfiniminerSound.ClickHigh);
-                        break;
-                }
+                case "direct":
+                    directConnectIPEnter = true;
+                    Game.StatusMessage = "";
+                    _P.PlaySound(InfiniminerSound.ClickHigh);
+                    break;
             }
         }
 

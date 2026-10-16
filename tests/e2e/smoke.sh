@@ -156,8 +156,8 @@ sleep 1
 shot server_list
 
 echo "Hosting a game from the server list..."
-press DPadDown
-press DPadUp            # the top row, HOST A GAME
+press DPadDown          # QUICK PLAY
+press DPadRight         # HOST A GAME, beside it
 press A 1
 wait_for "$work/client.log" "TRACE STATE HostGameState"
 shot host_settings
@@ -171,6 +171,20 @@ press A
 wait_for "$work/client.log" "TRACE STATE MainGameState" 4
 sleep 1
 shot hosted_game
+
+echo "Ending the hosted game, then QUICK PLAY (nothing on the LAN, so it starts a game with computer players)..."
+press Start 1
+wait_for "$work/client.log" "TRACE STATE GameMenuState" 3
+press DPadUp            # the last row, END GAME
+press A
+wait_for "$work/client.log" "TRACE STATE ServerBrowserState" 4
+sleep 2
+shot server_list_empty
+press DPadDown          # QUICK PLAY
+press A
+wait_for "$work/client.log" "TRACE JOINED" 4 90
+wait_for "$work/client.log" "TRACE STATE TeamSelectionState" 3
+shot quick_play
 
 if grep -q "Exception" "$work/client.log" "$work/server.log"; then
     fail "an exception was logged"

@@ -121,3 +121,19 @@ The original server trusted almost everything the client said.
 - [x] With tips on, the block under the crosshair is named and explained (ROCK: too hard for a pickaxe...)
 - [x] The tool in hand is named at the bottom of the screen, with the construction gun's block, its price and
       whether you can afford it; with tips on, what it does shows for a few seconds after changing
+
+## 14. Multiplayer screen
+The original was "a combination of Infinifrag, Team Fortress 2, and Motherload ... a competitive mining game"
+(Zach Barth, Rock Paper Shotgun, 2011): short team matches, which a server list should get people into quickly.
+- [x] The server list is a table: where (LAN, NET, YOURS, RECENT), name, mode, world size, players (people, as bots
+      make way for them), bots and ping, with a line about the selected game; full servers and other versions are
+      marked and can't be chosen
+- [x] Discovery replies carry the version, world size, mode, lava, bots and winning cash (added at the end, so older
+      games still read them); servers from the public list are asked directly, for their ping and details
+- [x] The list keeps itself current (every 5 seconds) and drops servers that stop answering
+- [x] QUICK PLAY: joins the best open game, or starts one with computer players (the HOST GAME settings)
+- [ ] Bank loot at your home base when home bases are on (the original's commented-out plan), and no building
+      next to a team's home base (the original's `LocationNearBase`)
+- [ ] A public server list that games use by default (the original's went down in 2015; the service is in
+      `src/Infiniminer.ServerList`, but it needs hosting)
+

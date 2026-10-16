@@ -91,14 +91,25 @@ namespace Infiniminer
         }
     }
 
-    // Information a server returns in reply to a LAN discovery broadcast.
+    // Information a server returns in reply to a discovery request (a LAN broadcast, or one sent straight to a server
+    // from the public list).
     public class DiscoveryInfo
     {
         public string InstanceId;
         public string ServerName;
-        public int PlayerCount;
+        public int PlayerCount;         // everyone, computer players included
         public int MaxPlayers;
-        public string Extra;
+        public string Extra;            // a short summary ("10k, hill, 3 bots"), all that servers before v1.9 send
+
+        // Details for the server browser (v1.9 on; added at the end, so older games stop reading before them).
+        public bool HasDetails;
+        public string Version = "";
+        public int MapSize;
+        public GameMode Mode;
+        public bool Sandbox;
+        public bool Lava = true;
+        public int Bots;
+        public uint WinningCash;
 
         public void Write(NetDataWriter writer)
         {
@@ -108,6 +119,13 @@ namespace Infiniminer
             writer.Put(PlayerCount);
             writer.Put(MaxPlayers);
             writer.Put(Extra);
+            writer.Put(Version);
+            writer.Put(MapSize);
+            writer.Put((byte)Mode);
+            writer.Put(Sandbox);
+            writer.Put(Lava);
+            writer.Put(Bots);
+            writer.Put(WinningCash);
         }
 
         public static DiscoveryInfo TryRead(NetDataReader reader)
@@ -122,6 +140,17 @@ namespace Infiniminer
                 info.PlayerCount = reader.GetInt();
                 info.MaxPlayers = reader.GetInt();
                 info.Extra = reader.GetString();
+                if (reader.AvailableBytes > 0)
+                {
+                    info.Version = reader.GetString();
+                    info.MapSize = reader.GetInt();
+                    info.Mode = (GameMode)reader.GetByte();
+                    info.Sandbox = reader.GetBool();
+                    info.Lava = reader.GetBool();
+                    info.Bots = reader.GetInt();
+                    info.WinningCash = reader.GetUInt();
+                    info.HasDetails = true;
+                }
                 return info;
             }
             catch (Exception)

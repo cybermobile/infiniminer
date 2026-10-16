@@ -26,6 +26,12 @@ namespace Infiniminer
             get { return server?.PortForward; }
         }
 
+        // The server's discovery id, once it is running.
+        public string InstanceId
+        {
+            get { return server?.InstanceId; }
+        }
+
         public bool Running
         {
             get { return thread.IsAlive; }

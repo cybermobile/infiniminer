@@ -13,6 +13,17 @@ namespace Infiniminer
         Type deferredState = null;
         ServerMessageHandler messageHandler;
         Task<List<ServerInformation>> publicServerListTask = null;
+        bool publicServersProbed = false;
+        double discoverySentAt = double.NaN;    // the last LAN broadcast (seconds of real time)
+        readonly Dictionary<IPEndPoint, double> probeSentAt = new Dictionary<IPEndPoint, double>();     // public servers asked directly
+        double lastPublicListFetch = double.NegativeInfinity;
+        static readonly System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+
+        // Real time in seconds, for ping times (game time only advances once a frame).
+        static double RealNow
+        {
+            get { return clock.Elapsed.TotalSeconds; }
+        }
 
         public ClientSettings Settings { get; private set; } = new ClientSettings();
         public bool NoSound = false;    // set from the config, or when no audio device is available
@@ -260,18 +271,58 @@ namespace Infiniminer
             propertyBag.serverPeer = propertyBag.netClient.Connect(serverEndPoint, connectBuffer);
         }
 
-        // Starts looking for servers: a LAN broadcast (replies arrive through UpdateNetwork) and,
-        // if a list URL is configured, a download of the public server list.
-        public void StartServerDiscovery()
+        // Starts looking for servers: a LAN broadcast (replies arrive through UpdateNetwork) and, if a list URL is
+        // configured, a download of the public server list, whose servers are then asked directly (for their ping and
+        // details). Without `clear`, the servers already found stay listed and are updated as they answer: the
+        // server list calls this every few seconds to keep player counts current.
+        public void StartServerDiscovery(bool clear = true)
         {
-            propertyBag.discoveredServers.Clear();
+            if (clear)
+                propertyBag.discoveredServers.Clear();
 
             NetDataWriter request = new NetDataWriter();
             request.Put(GameConstants.DiscoveryRequest);
             propertyBag.netClient.SendBroadcast(request, GameConstants.DefaultPort);
+            discoverySentAt = RealNow;
 
             string serverListUrl = Settings.ServerListUrl;
-            publicServerListTask = serverListUrl == "" ? null : Task.Run(() => FetchPublicServerList(serverListUrl));
+            if (serverListUrl == "")
+                publicServerListTask = null;
+            else if (clear || RealNow - lastPublicListFetch > 30)
+            {
+                lastPublicListFetch = RealNow;
+                publicServerListTask = Task.Run(() => FetchPublicServerList(serverListUrl));
+                publicServersProbed = false;
+            }
+            else
+                publicServersProbed = false;    // ask the listed servers again
+        }
+
+        // Seconds since the last discovery broadcast (servers on the LAN answer within a moment).
+        public double SecondsSinceDiscovery
+        {
+            get { return double.IsNaN(discoverySentAt) ? double.PositiveInfinity : RealNow - discoverySentAt; }
+        }
+
+        // Whether the public server list is still being downloaded.
+        public bool FetchingPublicList
+        {
+            get { return publicServerListTask != null && !publicServerListTask.IsCompleted; }
+        }
+
+        // Asks each server on the public list directly, once the list has arrived.
+        void ProbePublicServers()
+        {
+            if (publicServersProbed || publicServerListTask == null || !publicServerListTask.IsCompletedSuccessfully)
+                return;
+            publicServersProbed = true;
+            NetDataWriter request = new NetDataWriter();
+            request.Put(GameConstants.DiscoveryRequest);
+            foreach (ServerInformation server in publicServerListTask.Result)
+            {
+                probeSentAt[server.ipEndPoint] = RealNow;
+                propertyBag.netClient.SendUnconnectedMessage(request, server.ipEndPoint);
+            }
         }
 
         public static async Task<List<ServerInformation>> FetchPublicServerList(string url)
@@ -297,9 +348,12 @@ namespace Infiniminer
             return serverList;
         }
 
-        // LAN servers that answered, followed by any public servers.
+        // Servers that answered (on the LAN, or from the public list), followed by public servers that haven't (yet).
+        // Servers that stop answering drop off the list.
         public List<ServerInformation> GetServerList()
         {
+            ProbePublicServers();
+            propertyBag.discoveredServers.RemoveAll(server => RealNow - server.LastSeen > 20);
             List<ServerInformation> serverList = new List<ServerInformation>(propertyBag.discoveredServers);
             if (publicServerListTask != null && publicServerListTask.IsCompletedSuccessfully)
                 foreach (ServerInformation server in publicServerListTask.Result)
@@ -409,8 +463,25 @@ namespace Infiniminer
             DiscoveryInfo info = DiscoveryInfo.TryRead(reader);
             if (info == null)
                 return;
-            ServerInformation serverInfo = new ServerInformation(remoteEndPoint, info);
-            if (!propertyBag.discoveredServers.Contains(serverInfo))
+            // A public server we asked directly, or one on the LAN that answered the broadcast.
+            bool probed = probeSentAt.TryGetValue(remoteEndPoint, out double sentAt);
+            ServerInformation serverInfo = new ServerInformation(remoteEndPoint, info)
+            {
+                lanServer = !probed,
+                LastSeen = RealNow,
+            };
+            double since = probed ? sentAt : discoverySentAt;
+            if (!double.IsNaN(since))
+                serverInfo.PingMs = (int)Math.Round((RealNow - since) * 1000);
+            // A fresh answer replaces the old one, in the same place in the list.
+            // (A server on the LAN that is also on the public list stays a LAN server.)
+            int existing = propertyBag.discoveredServers.IndexOf(serverInfo);
+            if (existing >= 0)
+            {
+                serverInfo.lanServer |= propertyBag.discoveredServers[existing].lanServer;
+                propertyBag.discoveredServers[existing] = serverInfo;
+            }
+            else
                 propertyBag.discoveredServers.Add(serverInfo);
         }
 
@@ -475,6 +546,7 @@ namespace Infiniminer
             propertyBag.netListener.NetworkReceiveEvent += OnNetworkReceive;
             propertyBag.netListener.NetworkReceiveUnconnectedEvent += OnNetworkReceiveUnconnected;
             publicServerListTask = null;
+            publicServersProbed = false;
         }
 
         protected override void LoadContent()

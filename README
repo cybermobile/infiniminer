@@ -42,8 +42,11 @@ NEW TO THE GAME? Tips at the top of the screen walk you through it one step at a
 build a ladder to climb out, find treasure, bank it), and the block under your crosshair is named and explained.
 Each tip goes away once you've done it; TIPS FOR NEW PLAYERS in OPTIONS turns them off, or back on from the start.
 
-The client finds servers on your LAN automatically, and lists the last five servers you joined (so a
-server joined by address is one click away next time). When a match ends and the server restarts with a
+The server list (SELECT A SERVER) shows the games on your LAN and, if a public server list is set, on the
+internet, as a table: mode, world size, players, computer players and ping, with a line about the selected game.
+It keeps itself up to date, dims full servers and marks ones running another version. QUICK PLAY joins the
+best open game (people playing, then nearest), or starts one with computer players if there isn't one. It
+also lists the last five servers you joined (so a server joined by address is one click away next time). When a match ends and the server restarts with a
 new map, the game rejoins it by itself. Use [ DIRECT CONNECT ] for anything else; it accepts
 an IP address or host name, optionally followed by ":port".
 

@@ -28,6 +28,37 @@ namespace Infiniminer.Tests
             Assert.Equal(3, read.PlayerCount);
             Assert.Equal(16, read.MaxPlayers);
             Assert.Equal("10k", read.Extra);
+            Assert.True(read.HasDetails);
+        }
+
+        [Fact]
+        public void DiscoveryDetailsRoundTripAndOldRepliesStillRead()
+        {
+            DiscoveryInfo info = new DiscoveryInfo
+            {
+                InstanceId = "abc", ServerName = "Test", PlayerCount = 5, MaxPlayers = 16, Extra = "hill, 4 bots",
+                Version = "v1.9", MapSize = 96, Mode = GameMode.Hill, Lava = false, Bots = 4, WinningCash = 12000,
+            };
+            NetDataWriter writer = new NetDataWriter();
+            info.Write(writer);
+            DiscoveryInfo read = DiscoveryInfo.TryRead(new NetDataReader(writer.CopyData()));
+            Assert.True(read.HasDetails);
+            Assert.Equal("v1.9", read.Version);
+            Assert.Equal(96, read.MapSize);
+            Assert.Equal(GameMode.Hill, read.Mode);
+            Assert.False(read.Sandbox);
+            Assert.False(read.Lava);
+            Assert.Equal(4, read.Bots);
+            Assert.Equal(12000u, read.WinningCash);
+
+            // A reply from an older server ends after the summary.
+            NetDataWriter old = new NetDataWriter();
+            old.Put(GameConstants.DiscoveryResponse);
+            old.Put("id"); old.Put("Old"); old.Put(2); old.Put(8); old.Put("10k");
+            DiscoveryInfo oldRead = DiscoveryInfo.TryRead(new NetDataReader(old.CopyData()));
+            Assert.NotNull(oldRead);
+            Assert.False(oldRead.HasDetails);
+            Assert.Equal("10k", oldRead.Extra);
         }
 
         [Fact]

@@ -81,6 +81,12 @@ namespace Infiniminer
             get { return clock.Elapsed.TotalSeconds; }
         }
 
+        // Tells this server's discovery replies apart from other servers' (the game spots its own hosted game).
+        public string InstanceId
+        {
+            get { return instanceId; }
+        }
+
         public InfiniminerServer(ServerConfig config, string dataDirectory)
         {
             this.config = config;
@@ -1279,6 +1285,13 @@ namespace Infiniminer
                 PlayerCount = playerList.Count,
                 MaxPlayers = (int)config.MaxPlayers,
                 Extra = GetExtraInfo(),
+                Version = GameConstants.Version,
+                MapSize = MAPSIZE,
+                Mode = config.Mode,
+                Sandbox = config.SandboxMode,
+                Lava = config.IncludeLava,
+                Bots = bots.Count,
+                WinningCash = WinningCash,
             };
             NetDataWriter response = new NetDataWriter();
             info.Write(response);
