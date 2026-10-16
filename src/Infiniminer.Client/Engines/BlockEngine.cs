@@ -263,8 +263,8 @@ namespace Infiniminer
 
             for (BlockTexture blockTexture = BlockTexture.None + 1; blockTexture < BlockTexture.MAXIMUM; blockTexture++)
             {
-                // Translucent textures are the last two, so they are drawn after everything opaque.
-                // TODO (from the original): make translucent blocks look like we actually want them to look!
+                // Translucent textures are the last two, so they are drawn after everything opaque. Touching blocks of
+                // the same force field share no faces (see Joined), so a wall of them reads as one sheet.
                 bool renderTranslucent = blockTexture == BlockTexture.TransRed || blockTexture == BlockTexture.TransBlue;
                 bool renderLava = blockTexture == BlockTexture.Lava;
                 graphicsDevice.BlendState = renderTranslucent ? BlendState.NonPremultiplied : BlendState.Opaque;
@@ -453,10 +453,25 @@ namespace Infiniminer
         private void _AddBlock(ushort x, ushort y, ushort z, BlockFaceDirection dir, BlockType type, int x2, int y2, int z2, BlockFaceDirection dir2)
         {
             BlockType type2 = blockList[x2, y2, z2];
-            if (type2 != BlockType.None && type != BlockType.TransRed && type != BlockType.TransBlue && type2 != BlockType.TransRed && type2 != BlockType.TransBlue)
+            if (Joined(type, type2))
                 HideQuad((ushort)x2, (ushort)y2, (ushort)z2, dir2, type2);
             else
                 ShowQuad(x, y, z, dir, type);
+        }
+
+        static bool Translucent(BlockType type)
+        {
+            return type == BlockType.TransRed || type == BlockType.TransBlue;
+        }
+
+        // Whether the face between two neighbouring blocks is hidden: between solid blocks, and between blocks of the
+        // same force field (so a wall of them looks like one sheet, not a stack of see-through boxes). Next to a
+        // force field, solid blocks keep their faces, which show through it.
+        static bool Joined(BlockType type, BlockType type2)
+        {
+            if (type == BlockType.None || type2 == BlockType.None)
+                return false;
+            return Translucent(type) || Translucent(type2) ? type == type2 : true;
         }
 
         // Dirt marked by prospectors (the radar's use button), shown on the radar.
@@ -485,7 +500,7 @@ namespace Infiniminer
         {
             BlockType type = blockList[x, y, z];
             BlockType type2 = blockList[x2, y2, z2];
-            if (type2 != BlockType.None && type != BlockType.TransRed && type != BlockType.TransBlue && type2 != BlockType.TransRed && type2 != BlockType.TransBlue)
+            if (Joined(type, type2))
                 ShowQuad((ushort)x2, (ushort)y2, (ushort)z2, dir2, type2);
             else
                 HideQuad(x, y, z, dir, type);

@@ -138,6 +138,9 @@ The original was "a combination of Infinifrag, Team Fortress 2, and Motherload .
       trapped; the construction gun says so when aimed there
 - [x] Prospectors' marks (the radar's use button marks dirt) show on the radar, and the tips explain them
 - [x] Loading hints name the player's own keys (or controller buttons), with new ones about bases and marks
+- [x] Force fields: touching blocks of the same force field share no faces, so a wall of them reads as one sheet
+      instead of a stack of see-through boxes (the original's "make translucent blocks look like we actually want
+      them to look!" TODO)
 - [ ] A public server list that games use by default (the original's went down in 2015; the service is in
       `src/Infiniminer.ServerList`, but it needs hosting)
 
