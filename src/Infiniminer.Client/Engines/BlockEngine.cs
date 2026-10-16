@@ -459,12 +459,19 @@ namespace Infiniminer
                 ShowQuad(x, y, z, dir, type);
         }
 
+        // Dirt marked by prospectors (the radar's use button), shown on the radar.
+        public readonly HashSet<(int x, int y, int z)> Marks = new HashSet<(int, int, int)>();
+
         public void AddBlock(ushort x, ushort y, ushort z, BlockType blockType)
         {
             if (x <= 0 || y <= 0 || z <= 0 || x >= MAPSIZE - 1 || y >= MAPSIZE - 1 || z >= MAPSIZE - 1)
                 return;
 
             blockList[x, y, z] = blockType;
+            if (blockType == BlockType.DirtSign)
+                Marks.Add((x, y, z));
+            else
+                Marks.Remove((x, y, z));
 
             _AddBlock(x, y, z, BlockFaceDirection.XIncreasing, blockType, x + 1, y, z, BlockFaceDirection.XDecreasing);
             _AddBlock(x, y, z, BlockFaceDirection.XDecreasing, blockType, x - 1, y, z, BlockFaceDirection.XIncreasing);
@@ -489,6 +496,7 @@ namespace Infiniminer
             if (x <= 0 || y <= 0 || z <= 0 || x >= MAPSIZE - 1 || y >= MAPSIZE - 1 || z >= MAPSIZE - 1)
                 return;
 
+            Marks.Remove((x, y, z));
             _RemoveBlock(x, y, z, BlockFaceDirection.XIncreasing, x + 1, y, z, BlockFaceDirection.XDecreasing);
             _RemoveBlock(x, y, z, BlockFaceDirection.XDecreasing, x - 1, y, z, BlockFaceDirection.XIncreasing);
             _RemoveBlock(x, y, z, BlockFaceDirection.YIncreasing, x, y + 1, z, BlockFaceDirection.YDecreasing);

@@ -69,6 +69,13 @@ namespace Infiniminer.Tests
                 bot.ExplosiveList.Clear();
             }
 
+            public (int x, int y, int z)? Home;
+
+            public (int x, int y, int z)? HomeBase(PlayerTeam team)
+            {
+                return Home;
+            }
+
             public bool AtOwnBank(ServerPlayer bot)
             {
                 return FindBank(bot.Team) is (int x, int y, int z)
@@ -184,6 +191,40 @@ namespace Infiniminer.Tests
             Assert.True(miner.Player.Alive);
             Assert.False((int)MathF.Floor(miner.Player.Position.X) == 10 && (int)MathF.Floor(miner.Player.Position.Z) == 10,
                 "the bot should have stepped away from the lava");
+        }
+
+        [Fact]
+        public void WithHomeBasesBotsCarryLootHomeToBankIt()
+        {
+            FakeWorld world = new FakeWorld(32, BlockType.Dirt);
+            world.Carve(2, 29, 25, 30, 2, 29);      // open ground at y = 24, the surface
+            world.Home = (24, 25, 24);
+            world.Blocks[24, 25, 24] = BlockType.HomeRed;
+            ServerBot miner = MakeBot(world, PlayerClass.Miner, 6, 25, 6, ore: 0);
+            miner.Player.Cash = 1000;
+            miner.Player.Weight = 1;
+            miner.HeadForSurface();
+            miner.Update(0.05f);
+            Assert.True(miner.CarryingLootHome);
+
+            // The server banks it once the bot is in the base.
+            for (float t = 0; t < 40 && miner.Player.Cash > 0; t += 0.05f)
+            {
+                miner.Update(0.05f);
+                if (GameRules.InHomeBase(miner.Player.Position.X, miner.Player.Position.Y, miner.Player.Position.Z, world.Home.Value))
+                    miner.Player.Cash = 0;
+            }
+            Assert.Equal(0u, miner.Player.Cash);
+            Run(miner, 1);      // (finishing the step it was taking)
+            Assert.False(miner.CarryingLootHome);
+
+            // Without a home base, loot is banked anywhere on the surface: no walk home.
+            world.Home = null;
+            ServerBot other = MakeBot(world, PlayerClass.Miner, 6, 25, 6, ore: 0);
+            other.Player.Cash = 100;
+            other.HeadForSurface();
+            other.Update(0.05f);
+            Assert.False(other.CarryingLootHome);
         }
 
         [Fact]

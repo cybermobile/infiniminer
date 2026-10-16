@@ -360,7 +360,7 @@ namespace Infiniminer
             if (player.Ore < player.BuildCost(blockType) || blockEngine.BlockAtPoint(hitPoint) == BlockType.Lava)
                 return;
             var block = BlockOf(buildPoint);
-            if (!InsideMap(block))
+            if (!InsideMap(block) || GuardedFromBuilding(block.x, block.y, block.z))
                 return;
             // Nobody may be standing there (the server checks the same cells).
             foreach (Player p in playerList.Values)
@@ -462,13 +462,46 @@ namespace Infiniminer
             return false;
         }
 
+        // A team's home block, if it has a base (the server shows it on the radar as HOME, one block up).
+        public (int x, int y, int z)? HomeBase(PlayerTeam team)
+        {
+            foreach (KeyValuePair<Vector3, Beacon> beacon in beaconList)
+                if (beacon.Value.ID == "HOME" && beacon.Value.Team == team)
+                    return ((int)beacon.Key.X, (int)beacon.Key.Y - 1, (int)beacon.Key.Z);
+            return null;
+        }
+
+        // Whether we're in our team's base (where loot is banked, when there is one).
+        public bool InOwnHomeBase()
+        {
+            return HomeBase(player.Team) is (int, int, int) home && GameRules.InHomeBase(player.Position.X, player.Position.Y, player.Position.Z, home);
+        }
+
+        // Whether the other team's base keeps us from building at a block (as the server checks).
+        public bool GuardedFromBuilding(int x, int y, int z)
+        {
+            if (player.Sandbox)
+                return false;
+            PlayerTeam other = player.Team == PlayerTeam.Red ? PlayerTeam.Blue : PlayerTeam.Red;
+            return HomeBase(other) is (int, int, int) home && GameRules.GuardedByHome(x, y, z, home);
+        }
+
+        // Where the construction gun would put a block, if anywhere.
+        public (int x, int y, int z)? BuildTarget()
+        {
+            Vector3 hitPoint = Vector3.Zero, buildPoint = Vector3.Zero;
+            if (!blockEngine.RayCollision(player.Position, playerCamera.GetLookVector(), 6, 25, ref hitPoint, ref buildPoint))
+                return null;
+            return BlockOf(buildPoint);
+        }
+
         // What the guide needs to know; tips are only for real games (not watching, the map editor or a finished match).
         public GuideState GuideState(bool showTips)
         {
             bool playing = showTips && !player.Dead && !player.Spectating && player.HasClass && !player.Sandbox
                 && teamWinners == PlayerTeam.None;
             return new GuideState(playing, SurfaceHeight - player.Position.Y, player.Ore, player.Cash, player.Class,
-                player.SelectedTool, player.SelectedBlock, winningCash);
+                player.SelectedTool, player.SelectedBlock, winningCash, HomeBase(player.Team) != null);
         }
 
         // The block the crosshair is on, within building reach, or None.

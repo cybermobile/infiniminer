@@ -30,13 +30,24 @@ namespace Infiniminer.States
             "Engineers can build force fields of the other team's color.\nUse this ability to create bridges only accessible to your team.",
             "Movement speed is doubled on road blocks.\nUse them to cover horizontal distances quickly.",
             "Return gold and diamonds to the surface to collect loot for your team!",
-            "Press Q to quickly signal your teammates.",
+            "Press {PING} to quickly signal your teammates.",
             "All constructions require metal ore.\nDig for some or take it from your team's banks.",
-            "Don't have a scroll wheel?\nPress R to cycle through block types for the construction gun.",
+            "Don't have a scroll wheel?\nPress {BLOCK} to cycle through block types for the construction gun.",
             "You can set your name, screen resolution and controls\nin the OPTIONS menu.",
             "Engineers can build teleporters. Stepping on one takes\nyou to the next teleporter your team built.",
             "Miners carry a drill that can bore through rock.",
+            "With home bases on, loot is only banked in your team's base:\nwatch the way home, and make the other team's way harder.",
+            "Nobody can build in the other team's home base,\nso their spawn can't be trapped.",
+            "Prospectors can mark dirt with the radar's use button.\nMarks show on the radar, to lead the team to treasure.",
         };
+
+        // A hint with the player's own keys (or controller buttons) in it.
+        string WithControls(string hint)
+        {
+            bool pad = _SM.UsingGamePad;
+            return hint.Replace("{PING}", pad ? "Y" : ClientSettings.KeyName(Game.Settings.Key(GameAction.Ping)))
+                       .Replace("{BLOCK}", pad ? "LB" : ClientSettings.KeyName(Game.Settings.Key(GameAction.NextBlock)));
+        }
 
         public override void OnEnter(Type oldState)
         {
@@ -51,7 +62,7 @@ namespace Infiniminer.States
 
             // Pick a random hint.
             Random randGen = new Random();
-            currentHint = HINTS[randGen.Next(0, HINTS.Length)].Split("\n".ToCharArray());
+            currentHint = WithControls(HINTS[randGen.Next(0, HINTS.Length)]).Split("\n".ToCharArray());
         }
 
         public override void OnLeave(Type newState)

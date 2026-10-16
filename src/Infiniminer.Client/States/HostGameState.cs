@@ -190,7 +190,7 @@ namespace Infiniminer.States
                 new Row
                 {
                     Label = "HOME BASES",
-                    Value = () => OnOff(Settings.HostHomeBases),
+                    Value = () => Settings.HostHomeBases ? "ON (BANK LOOT AT HOME)" : "OFF",
                     Change = direction => { Settings.HostHomeBases = !Settings.HostHomeBases; Changed(); },
                 },
                 new Row

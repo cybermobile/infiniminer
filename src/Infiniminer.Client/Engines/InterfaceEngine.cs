@@ -188,6 +188,23 @@ namespace Infiniminer
             }
         }
 
+        // Prospectors' marks within the radar's range, as small yellow squares (brighter when level with us).
+        void RenderRadarMarks(SpriteBatch spriteBatch)
+        {
+            Matrix rotationMatrix = Matrix.CreateRotationY(-_P.playerCamera.Yaw);
+            foreach (var (mx, my, mz) in _P.blockEngine.Marks)
+            {
+                Vector3 relative = new Vector3(mx + 0.5f, my + 0.5f, mz + 0.5f) - _P.player.Position;
+                float altitude = relative.Y;
+                relative.Y = 0;
+                if (relative.Length() > 9)
+                    continue;
+                relative = Vector3.Transform(relative, rotationMatrix) * 10;
+                Color color = Math.Abs(altitude) <= 3 ? new Color(255, 200, 40) : new Color(160, 125, 25);
+                spriteBatch.Draw(texBlank, new Rectangle((int)(10 + 99 + relative.X) - 2, (int)(30 + 99 + relative.Z) - 2, 4, 4), color);
+            }
+        }
+
         public void RenderDetonator(GraphicsDevice graphicsDevice, SpriteBatch spriteBatch)
         {
             int screenWidth = ScreenWidth;
@@ -301,7 +318,12 @@ namespace Infiniminer
             {
                 uint cost = player.BuildCost(block);
                 label += ": " + BlockGuide.Name(block) + (cost == 0 ? " (FREE)" : " (" + cost + " ORE)");
-                if (player.Ore < cost)
+                if (_P.BuildTarget() is (int, int, int) target && _P.GuardedFromBuilding(target.x, target.y, target.z))
+                {
+                    label += " - NO BUILDING IN THEIR BASE";
+                    color = InfiniminerGame.IM_RED;
+                }
+                else if (player.Ore < cost)
                 {
                     label += " - NOT ENOUGH ORE";
                     color = InfiniminerGame.IM_RED;
@@ -321,7 +343,7 @@ namespace Infiniminer
 
             // What the crosshair is on (not plain dirt, which is everywhere).
             BlockType looking = _P.LookingAt();
-            if (looking != BlockType.None && looking != BlockType.Dirt && looking != BlockType.DirtSign)
+            if (looking != BlockType.None && looking != BlockType.Dirt)
             {
                 string description = BlockGuide.Description(looking, _P.player.Team, _P.player.Class);
                 RenderMessageCenter(spriteBatch, BlockGuide.Name(looking) + (description != "" ? ": " + description : ""),
@@ -393,6 +415,11 @@ namespace Infiniminer
             // Show the altimeter.
             int altitude = (int)(_P.player.Position.Y - _P.SurfaceHeight);
             RenderMessageCenter(spriteBatch, String.Format("ALTITUDE: {0:00}", altitude), new Vector2(ScreenWidth - 90, ScreenHeight - 20), altitude >= 0 ? Color.Gray : InfiniminerGame.IM_RED, Color.Black);
+
+            // With home bases, loot is banked at home: say so to anyone carrying some on the surface.
+            if (!_P.player.Dead && _P.player.Cash > 0 && altitude >= -1 && _P.HomeBase(_P.player.Team) != null && !_P.InOwnHomeBase())
+                RenderMessageCenter(spriteBatch, "TAKE YOUR $" + _P.player.Cash + " TO YOUR HOME BASE TO BANK IT (HOME ON THE RADAR)",
+                    new Vector2(ScreenWidth / 2, ScreenHeight - 84), new Color(255, 200, 40), Color.Black);
 
             // Draw bank instructions.
             if (_P.AtBankTerminal())
@@ -523,6 +550,7 @@ namespace Infiniminer
                 if (bPair.Value.Team == _P.player.Team)
                     RenderRadarBlip(spriteBatch, bPair.Key, Color.White, false, bPair.Value.ID);
             RenderRadarBlip(spriteBatch, new Vector3(100000, 0, 32), Color.White, false, "NORTH");
+            RenderRadarMarks(spriteBatch);
 
             spriteBatch.Draw(texRadarForeground, new Vector2(10, 30), Color.White);
 

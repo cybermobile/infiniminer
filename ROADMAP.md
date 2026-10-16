@@ -132,8 +132,12 @@ The original was "a combination of Infinifrag, Team Fortress 2, and Motherload .
       games still read them); servers from the public list are asked directly, for their ping and details
 - [x] The list keeps itself current (every 5 seconds) and drops servers that stop answering
 - [x] QUICK PLAY: joins the best open game, or starts one with computer players (the HOST GAME settings)
-- [ ] Bank loot at your home base when home bases are on (the original's commented-out plan), and no building
-      next to a team's home base (the original's `LocationNearBase`)
+- [x] With home bases, loot is banked in your own base (the original's commented-out plan): the HUD says so to
+      anyone carrying loot on the surface, the guide's tip does too, and bots walk their loot home
+- [x] Nobody builds in or over the other team's base (the original's `LocationNearBase`), so spawns can't be
+      trapped; the construction gun says so when aimed there
+- [x] Prospectors' marks (the radar's use button marks dirt) show on the radar, and the tips explain them
+- [x] Loading hints name the player's own keys (or controller buttons), with new ones about bases and marks
 - [ ] A public server list that games use by default (the original's went down in 2015; the service is in
       `src/Infiniminer.ServerList`, but it needs hosting)
 

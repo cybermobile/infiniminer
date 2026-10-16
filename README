@@ -147,7 +147,8 @@ Other new settings:
   port        (server) UDP port to listen on, default 5565. LAN discovery only looks on 5565.
   serverlist  (client and server) URL of a public server list (see PUBLIC SERVER LIST). Empty by
               default, so only LAN discovery and direct connect are used.
-  homebases   (server) give each team a home base to spawn at (default false).
+  homebases   (server) give each team a home base to spawn at (default false). Loot is then banked in your
+              own base (not anywhere on the surface), and the other team can't build in or over it.
   shocktouch  (server) shock blocks kill on any touch, not just from below (default false).
   timelimit   (server) match length in minutes; the richer team wins, ties go to overtime (default 0, off).
   gamemode    (server) "cash" (the original race to bank treasure, the default) or "hill": king of the hill.

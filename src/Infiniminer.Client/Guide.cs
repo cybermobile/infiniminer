@@ -9,7 +9,8 @@ namespace Infiniminer
         PlayerClass Class,
         PlayerTools Tool,
         BlockType Block,        // the construction gun's block
-        uint WinningCash);      // 0 when the server hasn't said
+        uint WinningCash,       // 0 when the server hasn't said
+        bool HomeBase = false); // the team has a home base, where loot is banked
 
     // The controls to name in tips: keys, or controller buttons.
     public readonly record struct GuideControls(string Use, string NextTool, string NextBlock, string Scores);
@@ -132,6 +133,9 @@ namespace Infiniminer
                     return "DIG DEEPER FOR GOLD (YELLOW NUGGETS) AND DIAMONDS: THEY'RE YOUR TEAM'S MONEY. "
                            + "THEY'RE HEAVY, SO YOU CAN ONLY CARRY A FEW (WEIGHT, AT THE TOP).";
                 case "bank":
+                    if (s.HomeBase)
+                        return "YOU'RE CARRYING $" + s.Cash + ". TAKE IT TO YOUR TEAM'S HOME BASE (HOME ON YOUR RADAR): IT'S BANKED "
+                               + "AS SOON AS YOU'RE IN THE CRATER. THE OTHER TEAM CAN'T BUILD THERE.";
                     return "YOU'RE CARRYING $" + s.Cash + ". TAKE IT UP TO THE SURFACE: IT'S BANKED FOR YOUR TEAM AS SOON AS YOU GET THERE.";
                 case "win":
                     return (s.WinningCash > 0 ? "THE FIRST TEAM TO BANK $" + s.WinningCash + " WINS. " : "THE TEAM THAT BANKS THE MOST LOOT WINS. ")
@@ -144,7 +148,7 @@ namespace Infiniminer
                 {
                     case PlayerClass.Prospector:
                         return "AS A PROSPECTOR YOU HAVE A RADAR" + tool + ". POINT IT AROUND: IT BEEPS AND LIGHTS UP AT GOLD OR DIAMONDS, "
-                               + "AND THE NEEDLE SHOWS HOW CLOSE THEY ARE.";
+                               + "AND THE NEEDLE SHOWS HOW CLOSE THEY ARE. " + c.Use + " ON DIRT MARKS IT, ON EVERYONE'S RADAR, TO SHOW THE WAY.";
                     case PlayerClass.Miner:
                         return "AS A MINER YOU DIG FASTER, CARRY MORE, AND HAVE A DRILL" + tool + " THAT BORES THROUGH ROCK.";
                     case PlayerClass.Sapper:
@@ -171,8 +175,8 @@ namespace Infiniminer
         {
             switch (blockType)
             {
-                case BlockType.Dirt:
-                case BlockType.DirtSign: return "DIRT";
+                case BlockType.Dirt: return "DIRT";
+                case BlockType.DirtSign: return "MARKED DIRT";
                 case BlockType.Ore: return "ORE";
                 case BlockType.Gold: return "GOLD";
                 case BlockType.Diamond: return "DIAMOND";
@@ -204,8 +208,8 @@ namespace Infiniminer
         {
             switch (blockType)
             {
-                case BlockType.Dirt:
-                case BlockType.DirtSign: return "DIG IT WITH YOUR PICKAXE";
+                case BlockType.Dirt: return "DIG IT WITH YOUR PICKAXE";
+                case BlockType.DirtSign: return "A PROSPECTOR'S MARK: IT SHOWS ON THE RADAR";
                 case BlockType.Ore: return "DIG IT FOR ORE, WHICH PAYS FOR BUILDING";
                 case BlockType.Gold: return "WORTH $100: DIG IT AND CARRY IT TO THE SURFACE";
                 case BlockType.Diamond: return "WORTH $1000: DIG IT AND CARRY IT TO THE SURFACE";
@@ -236,7 +240,10 @@ namespace Infiniminer
                 case BlockType.Metal: return "NOTHING DIGS THROUGH IT";
                 case BlockType.Lava: return "DEADLY, AND IT FLOWS INTO HOLES";
                 case BlockType.HomeRed:
-                case BlockType.HomeBlue: return "ITS TEAM STARTS HERE";
+                case BlockType.HomeBlue:
+                    return (blockType == BlockType.HomeRed) == (team == PlayerTeam.Red)
+                        ? "YOUR TEAM'S BASE: BRING LOOT HERE TO BANK IT"
+                        : "THE OTHER TEAM'S BASE: THEY BANK THEIR LOOT HERE, AND NOBODY ELSE CAN BUILD HERE";
             }
             return "";
         }
@@ -262,7 +269,7 @@ namespace Infiniminer
                 case PlayerTools.Pickaxe: return "DIGS DIRT, ORE AND TREASURE";
                 case PlayerTools.ConstructionGun: return "BUILDS BLOCKS WITH YOUR ORE";
                 case PlayerTools.DeconstructionGun: return sandbox ? "TAKES AWAY ANY BLOCK" : "TAKES AWAY BLOCKS YOUR TEAM BUILT";
-                case PlayerTools.ProspectingRadar: return "BEEPS AT GOLD AND DIAMONDS YOU POINT IT AT";
+                case PlayerTools.ProspectingRadar: return "BEEPS AT GOLD AND DIAMONDS YOU POINT IT AT; USE IT ON DIRT TO MARK IT";
                 case PlayerTools.Detonator: return "SETS OFF YOUR EXPLOSIVES";
                 case PlayerTools.Drill: return "SLOWER, BUT BORES THROUGH ROCK";
             }

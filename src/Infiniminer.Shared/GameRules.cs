@@ -12,6 +12,25 @@ namespace Infiniminer
         public const float ClimbVelocity = 2.5f;
         public const float DieVelocity = 15.0f;
 
+        // Home bases (the crater round each team's home block): with them, loot is banked in your own base rather than
+        // anywhere on the surface, and the other team can't build in or over a base, so spawns can't be trapped.
+        public const float HomeBankRadius = 4.5f;   // blocks across the ground from the home block: inside the crater
+        public const int HomeGuardRadius = 6;       // the crater and its rim
+
+        // Whether a player whose eyes are at (x, y, z) is in the base round the home block `home`.
+        public static bool InHomeBase(float x, float y, float z, (int x, int y, int z) home)
+        {
+            float dx = x - (home.x + 0.5f), dz = z - (home.z + 0.5f);
+            return dx * dx + dz * dz <= HomeBankRadius * HomeBankRadius && y >= home.y && y <= home.y + 6;
+        }
+
+        // Whether the block (x, y, z) is in or over the base round the home block `home`.
+        public static bool GuardedByHome(int x, int y, int z, (int x, int y, int z) home)
+        {
+            int dx = x - home.x, dz = z - home.z;
+            return dx * dx + dz * dz <= HomeGuardRadius * HomeGuardRadius && y >= home.y - 2;
+        }
+
         // Offsets from the player's eye position to the points used for collision.
         public const float HeadOffset = 0.1f;
         public const float MidBodyOffset = -0.7f;

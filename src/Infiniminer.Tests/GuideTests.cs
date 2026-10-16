@@ -110,6 +110,19 @@ namespace Infiniminer.Tests
         }
 
         [Fact]
+        public void WithAHomeBaseTheBankTipSaysToTakeLootThere()
+        {
+            Guide guide = new Guide(new HashSet<string> { "dig", "ore", "ladder", "loot" });
+            GuideState s = Playing() with { Cash = 100, HomeBase = true };
+            guide.Update(s, 0.1f);
+            Assert.Equal("bank", guide.Current);
+            Assert.Contains("HOME BASE", guide.Text(s, Keys));
+            Assert.DoesNotContain("HOME BASE", guide.Text(s with { HomeBase = false }, Keys));
+            Assert.Contains("YOUR TEAM'S BASE", BlockGuide.Description(BlockType.HomeRed, PlayerTeam.Red, PlayerClass.Miner));
+            Assert.Contains("OTHER TEAM'S BASE", BlockGuide.Description(BlockType.HomeRed, PlayerTeam.Blue, PlayerClass.Miner));
+        }
+
+        [Fact]
         public void NoTipsWhenNotPlaying()
         {
             Guide guide = new Guide(new HashSet<string>());

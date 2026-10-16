@@ -1964,11 +1964,37 @@ namespace Infiniminer
             return false;
         }
 
+        // Loot is banked on the surface, or, for a team with a home base, in it.
+        public bool CanBankLoot(ServerPlayer p)
+        {
+            if (!p.Alive)
+                return false;
+            if (homeBases.TryGetValue(p.Team, out (int x, int y, int z) home))
+                return GameRules.InHomeBase(p.Position.X, p.Position.Y, p.Position.Z, home);
+            return p.Position.Y > MAPSIZE - GameConstants.GroundLevel;
+        }
+
+        // The other team's home base is no place to build (a sandbox has no such rule).
+        bool GuardedFrom(PlayerTeam team, int x, int y, int z)
+        {
+            if (config.SandboxMode)
+                return false;
+            foreach (var (baseTeam, home) in homeBases)
+                if (baseTeam != team && GameRules.GuardedByHome(x, y, z, home))
+                    return true;
+            return false;
+        }
+
+        public (int x, int y, int z)? HomeBase(PlayerTeam team)
+        {
+            return homeBases.TryGetValue(team, out (int x, int y, int z) home) ? home : null;
+        }
+
         public void DepositForPlayers()
         {
             foreach (ServerPlayer p in playerList.Values)
             {
-                if (p.Alive && p.Position.Y > MAPSIZE - GameConstants.GroundLevel)
+                if (CanBankLoot(p))
                     DepositCash(p);
             }
 
@@ -2142,6 +2168,9 @@ namespace Infiniminer
         {
             bool editorBlock = config.SandboxMode && Array.IndexOf(GameRules.EditorBlocks, blockType) >= 0;
             if (!(BlockInformation.IsBuildable(blockType) || editorBlock) || !InBounds(x, y, z) || blockList[x, y, z] != BlockType.None)
+                return false;
+
+            if (GuardedFrom(player.Team, x, y, z))
                 return false;
 
             uint blockCost = BlockInformation.GetCost(blockType);

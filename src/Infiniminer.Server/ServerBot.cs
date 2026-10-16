@@ -17,6 +17,7 @@ namespace Infiniminer
         void Respawn(ServerPlayer bot);
         void Kill(ServerPlayer bot, string deathMessage);
         (int x, int y, int z)? Hill { get; }            // king of the hill: the platform's middle block, if there is one
+        (int x, int y, int z)? HomeBase(PlayerTeam team);       // the team's home block, if it has a base (loot is banked there)
     }
 
     // How well computer players play. Even hard bots stay within what a person can do: they dig no faster than
@@ -31,6 +32,7 @@ namespace Infiniminer
     //               fences it in with the team's force fields (which only the team can walk through) topped
     //               with a rail of shock blocks, and deposits the rest of its ore there
     //   Sapper      blasts through rock that a pickaxe can't dig, and raids the enemy bank to blow up its defences
+    // With home bases, loot is banked in the team's base, so bots carrying any walk there once back on the surface.
     // In king of the hill, bots back on the surface (or just respawned) often go and hold the hill for a while.
     // It moves one block at a time, digging what is in the way, keeps away from lava (and flees lava that flows
     // towards it), and heads home early when carrying diamonds.
@@ -45,6 +47,7 @@ namespace Infiniminer
         const float RaidLimit = 90;     // seconds a sapper spends on a raid
         const int BuildReach = 5;       // blocks; as far as the construction gun reaches
         const float HillTripLimit = 90; // seconds to spend getting onto the hill before giving up
+        const float HomeTripLimit = 90; // seconds to spend walking loot home before giving up on it
 
         public readonly ServerPlayer Player;
         readonly IBotWorld world;
@@ -52,7 +55,7 @@ namespace Infiniminer
         public BotSkill Skill = BotSkill.Normal;
         float idleTime;                 // easy bots stop for a breather now and then
 
-        enum Plan { Wander, Descend, Tunnel, Ascend, ToBank, Blast, Raid, Hold }
+        enum Plan { Wander, Descend, Tunnel, Ascend, ToBank, Blast, Raid, Hold, GoHome }
         Plan plan = Plan.Wander;
         int x, fy, z;                   // the block the bot's feet are in
         int dirX = 1, dirZ = 0;
@@ -100,6 +103,18 @@ namespace Infiniminer
         internal bool Ascending
         {
             get { return plan == Plan.Ascend; }
+        }
+
+        // (For tests: climb out, then carry any loot home.)
+        internal void HeadForSurface()
+        {
+            SyncFromPosition();
+            SetPlan(Plan.Ascend);
+        }
+
+        internal bool CarryingLootHome
+        {
+            get { return plan == Plan.GoHome; }
         }
 
         internal void HeadForBank()
@@ -575,23 +590,12 @@ namespace Infiniminer
                 case Plan.Ascend:
                     if (fy >= SurfaceFeetY)
                     {
-                        // On the surface: the server banks the loot.
+                        // On the surface: the server banks the loot (in the home base, if the team has one).
                         TripsHome++;
-                        if (Class == PlayerClass.Engineer && Player.Ore >= 50)
-                            SetPlan(Plan.ToBank);
-                        else if (Class == PlayerClass.Sapper && WantsToRaid())
-                        {
-                            SetPlan(Plan.Raid);
-                            Raids++;
-                        }
-                        else if (world.Hill != null && random.Next(2) == 0)
-                            StartHold();
+                        if (Player.Cash > 0 && world.HomeBase(Player.Team) != null)
+                            SetPlan(Plan.GoHome);
                         else
-                        {
-                            SetPlan(Plan.Wander);
-                            stepsLeft = 3 + random.Next(8);
-                            TurnRandomly();
-                        }
+                            AfterSurfacing();
                         return;
                     }
                     // No higher for a while (under rock, or against the edge of the map): walk somewhere else and try
@@ -649,6 +653,45 @@ namespace Infiniminer
                 case Plan.Hold:
                     HoldHill(elapsed);
                     return;
+
+                case Plan.GoHome:
+                    GoHome();
+                    return;
+            }
+        }
+
+        // Back on the surface with nothing (more) to bank: what next.
+        void AfterSurfacing()
+        {
+            if (Class == PlayerClass.Engineer && Player.Ore >= 50)
+                SetPlan(Plan.ToBank);
+            else if (Class == PlayerClass.Sapper && WantsToRaid())
+            {
+                SetPlan(Plan.Raid);
+                Raids++;
+            }
+            else if (world.Hill != null && random.Next(2) == 0)
+                StartHold();
+            else
+            {
+                SetPlan(Plan.Wander);
+                stepsLeft = 3 + random.Next(8);
+                TurnRandomly();
+            }
+        }
+
+        // Walks loot across the surface to the team's home base, where the server banks it.
+        void GoHome()
+        {
+            if (Player.Cash == 0 || planTime > HomeTripLimit || world.HomeBase(Player.Team) is not (int, int, int) home)
+            {
+                AfterSurfacing();
+                return;
+            }
+            if (!WalkOverground(home.x, home.z))
+            {
+                TurnRandomly();
+                Step(climb: true, dig: true);
             }
         }
 
